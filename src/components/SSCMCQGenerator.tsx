@@ -21,6 +21,9 @@ declare global {
   }
 }
 
+const GEMINI_API_KEY = "AIzaSyDWlAsiGp4UPF-cUwU4sVRvj1SU9qDUyt4";
+const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+
 const SSCMCQGenerator = () => {
   const [exam, setExam] = useState('SSC CGL');
   const [count, setCount] = useState(10);
@@ -100,25 +103,30 @@ const SSCMCQGenerator = () => {
     try {
       const base64Data = await extractPageImage(pdf, pageNum);
       
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
+      const response = await fetch(GEMINI_API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1500,
-          messages: [{
-            role: "user",
-            content: [
-              { type: "image", source: { type: "base64", media_type: "image/jpeg", data: base64Data }},
-              { type: "text", text: "Extract all text. Return only extracted text, no preamble." }
+          contents: [{
+            parts: [
+              { 
+                inline_data: { 
+                  mime_type: "image/jpeg", 
+                  data: base64Data 
+                }
+              },
+              { text: "Extract all text from this image. Return only the extracted text, no preamble or explanation." }
             ]
-          }]
+          }],
+          generationConfig: {
+            maxOutputTokens: 1500
+          }
         })
       });
       
       if (response.ok) {
         const data = await response.json();
-        const text = data.content[0]?.text?.trim();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
         if (text && text.length > 20) return text;
       }
     } catch (err) {}
@@ -166,16 +174,13 @@ const SSCMCQGenerator = () => {
     
     const contentChunk = content.length > 100000 ? content.substring(0, 100000) : content;
     
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
+    const response = await fetch(GEMINI_API_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 16000,
-        temperature: 1,
-        messages: [{
-          role: "user",
-          content: `You are an expert ${exam} exam question creator. Generate ${numQuestions} high-quality MCQs from the provided content.
+        contents: [{
+          parts: [{
+            text: `You are an expert ${exam} exam question creator. Generate ${numQuestions} high-quality MCQs from the provided content.
 
 FORMAT (strict - follow exactly):
 Q1. [Question]
@@ -197,7 +202,6 @@ CRITICAL REQUIREMENTS:
 - Double-check that correct answer letter matches the explanation
 - Cover different topics from the content
 - ${exam} difficulty level matching Testbook standards
-- Use web_search tool to verify facts from Testbook website (testbook.com) for accuracy
 - Ensure all 4 options are distinct and plausible
 - Make explanations educational and informative, not just confirmatory
 
@@ -205,15 +209,19 @@ CONTENT:
 ${contentChunk}
 
 Generate ${numQuestions} MCQs now with detailed, Testbook-style explanations:`
+          }]
         }],
-        tools: [{ type: "web_search_20250305", name: "web_search" }]
+        generationConfig: {
+          maxOutputTokens: 16000,
+          temperature: 1
+        }
       })
     });
     
     if (!response.ok) throw new Error('MCQ generation failed');
     
     const data = await response.json();
-    const mcqText = data.content.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('');
+    const mcqText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     return parseMCQs(mcqText);
   };
 
