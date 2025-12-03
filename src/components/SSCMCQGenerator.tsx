@@ -180,7 +180,7 @@ const SSCMCQGenerator = () => {
       body: JSON.stringify({
         contents: [{
           parts: [{
-            text: `You are an expert ${exam} exam question creator. Generate ${numQuestions} high-quality MCQs from the provided content.
+            text: `You are an expert ${exam} exam question creator and educator. Generate ${numQuestions} high-quality MCQs from the provided content.
 
 FORMAT (strict - follow exactly):
 Q1. [Question]
@@ -189,26 +189,32 @@ b) [Option]
 c) [Option]
 d) [Option]
 Correct Answer: a
-Explanation: [Detailed 3-4 sentence explanation in Testbook style - include why the correct answer is right, add relevant context, mention important facts, and briefly explain why other options are incorrect]
+Explanation: [VERY DETAILED explanation - see requirements below]
 
-CRITICAL REQUIREMENTS:
+CRITICAL EXPLANATION REQUIREMENTS (MOST IMPORTANT):
+Each explanation MUST be 5-8 sentences and include ALL of these elements:
+1. **Why Correct**: Start with "The correct answer is [letter]) because..." and explain the core concept thoroughly
+2. **Background Context**: Provide historical background, origin, or foundational information about the topic
+3. **Key Facts & Figures**: Include specific dates, numbers, statistics, names, or data points related to the answer
+4. **Related Concepts**: Connect to related topics, acts, amendments, or concepts that help deeper understanding
+5. **Memory Tip**: Add a mnemonic, trick, or easy way to remember this fact
+6. **Why Others Wrong**: Briefly explain why each wrong option (a/b/c/d) is incorrect with specific reasons
+7. **Exam Relevance**: Mention if this topic is frequently asked in ${exam} or related exams
+
+EXAMPLE EXPLANATION FORMAT:
+"The correct answer is b) 1950 because the Constitution of India came into effect on January 26, 1950. This date was chosen to commemorate the Purna Swaraj declaration of 1930. Dr. B.R. Ambedkar, as the Chairman of the Drafting Committee, played a crucial role in its creation. The Constitution originally had 395 Articles, 22 Parts, and 8 Schedules. Memory tip: '26 January = Republic Day = Constitution Day'. Option a) 1947 is wrong as that was Independence Day; c) 1952 was the first general elections; d) 1949 was when the Constitution was adopted (November 26), not enforced. This is a very frequently asked question in ${exam} Polity section."
+
+OTHER REQUIREMENTS:
 - Correct Answer MUST be only a single letter: a, b, c, or d
-- Explanation MUST be comprehensive and educational (3-4 sentences minimum)
-- Explanation should:
-  * Clearly explain why the correct answer is right
-  * Provide additional context and relevant facts
-  * Mention related concepts that help understanding
-  * Briefly note why other options are incorrect (if relevant)
-- Double-check that correct answer letter matches the explanation
 - Cover different topics from the content
 - ${exam} difficulty level matching Testbook standards
 - Ensure all 4 options are distinct and plausible
-- Make explanations educational and informative, not just confirmatory
+- Questions should test conceptual understanding, not just rote memorization
 
 CONTENT:
 ${contentChunk}
 
-Generate ${numQuestions} MCQs now with detailed, Testbook-style explanations:`
+Generate ${numQuestions} MCQs now with HIGHLY DETAILED Testbook-style explanations:`
           }]
         }],
         generationConfig: {
