@@ -185,10 +185,7 @@ const SSCMCQGenerator = () => {
     return allContent.join('\n');
   };
 
-  const generateMCQs = async (content: string, numQuestions: number): Promise<MCQ[]> => {
-    setStatus('Generating MCQs with AI (using 5 API keys in rotation)...');
-    
-    const contentChunk = content.length > 150000 ? content.substring(0, 150000) : content;
+  const generateMCQsBatch = async (content: string, numQuestions: number, batchNum: number, totalBatches: number): Promise<MCQ[]> => {
     const apiKey = getNextApiKey();
     
     const response = await fetch(getGeminiUrl(apiKey), {
@@ -197,7 +194,7 @@ const SSCMCQGenerator = () => {
       body: JSON.stringify({
         contents: [{
           parts: [{
-            text: `You are an expert ${exam} exam question creator and educator. Generate ${numQuestions} high-quality MCQs from the provided content.
+            text: `You are an expert ${exam} exam question creator and educator. Generate EXACTLY ${numQuestions} high-quality MCQs from the provided content. This is batch ${batchNum} of ${totalBatches}.
 
 FORMAT (strict - follow exactly):
 Q1. [Question]
@@ -222,30 +219,66 @@ EXAMPLE EXPLANATION FORMAT:
 "The correct answer is b) 1950 because the Constitution of India came into effect on January 26, 1950. This date was chosen to commemorate the Purna Swaraj declaration of 1930. Dr. B.R. Ambedkar, as the Chairman of the Drafting Committee, played a crucial role in its creation. The Constitution originally had 395 Articles, 22 Parts, and 8 Schedules. Memory tip: '26 January = Republic Day = Constitution Day'. Option a) 1947 is wrong as that was Independence Day; c) 1952 was the first general elections; d) 1949 was when the Constitution was adopted (November 26), not enforced. This is a very frequently asked question in ${exam} Polity section."
 
 OTHER REQUIREMENTS:
+- YOU MUST GENERATE EXACTLY ${numQuestions} MCQs - no more, no less
 - Correct Answer MUST be only a single letter: a, b, c, or d
 - Cover different topics from the content
 - ${exam} difficulty level matching Testbook standards
 - Ensure all 4 options are distinct and plausible
 - Questions should test conceptual understanding, not just rote memorization
+${batchNum > 1 ? `- Generate DIFFERENT questions from previous batches - focus on different aspects of the content` : ''}
 
 CONTENT:
-${contentChunk}
+${content}
 
-Generate ${numQuestions} MCQs now with HIGHLY DETAILED Testbook-style explanations:`
+Generate EXACTLY ${numQuestions} MCQs now with HIGHLY DETAILED Testbook-style explanations:`
           }]
         }],
         generationConfig: {
-          maxOutputTokens: 16000,
+          maxOutputTokens: 32000,
           temperature: 1
         }
       })
     });
     
-    if (!response.ok) throw new Error('MCQ generation failed');
+    if (!response.ok) throw new Error(`MCQ generation failed for batch ${batchNum}`);
     
     const data = await response.json();
     const mcqText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     return parseMCQs(mcqText);
+  };
+
+  const generateMCQs = async (content: string, numQuestions: number): Promise<MCQ[]> => {
+    const contentChunk = content.length > 150000 ? content.substring(0, 150000) : content;
+    
+    // Split into batches of 40 MCQs max per API call for better results
+    const BATCH_SIZE = 40;
+    const numBatches = Math.ceil(numQuestions / BATCH_SIZE);
+    const batches: { questions: number; batchNum: number }[] = [];
+    
+    let remaining = numQuestions;
+    for (let i = 0; i < numBatches; i++) {
+      const questionsInBatch = Math.min(BATCH_SIZE, remaining);
+      batches.push({ questions: questionsInBatch, batchNum: i + 1 });
+      remaining -= questionsInBatch;
+    }
+    
+    setStatus(`Generating ${numQuestions} MCQs in ${numBatches} parallel batches...`);
+    
+    // Run all batches in parallel using different API keys
+    const batchPromises = batches.map(batch => 
+      generateMCQsBatch(contentChunk, batch.questions, batch.batchNum, numBatches)
+    );
+    
+    const results = await Promise.all(batchPromises);
+    
+    // Combine all MCQs from all batches
+    const allMcqs = results.flat();
+    
+    // Renumber the questions
+    return allMcqs.map((mcq, idx) => ({
+      ...mcq,
+      question: mcq.question // Keep original question text
+    }));
   };
 
   const parseMCQs = (text: string): MCQ[] => {
