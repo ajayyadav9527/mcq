@@ -62,7 +62,7 @@ const getGeminiUrl = (key: string) =>
 const SSCMCQGenerator = () => {
   const [exam, setExam] = useState('SSC CGL');
   const [count, setCount] = useState(10);
-  const [autoCount, setAutoCount] = useState(false);
+  const [autoCount, setAutoCount] = useState(true);
   const [estimatedCount, setEstimatedCount] = useState(0);
   const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState<Progress>({ current: 0, total: 0, speed: 0, elapsed: 0 });
