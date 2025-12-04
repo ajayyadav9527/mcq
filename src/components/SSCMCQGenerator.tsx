@@ -26,8 +26,24 @@ const GEMINI_API_KEYS = [
   "AIzaSyDxofRJS6ULe4hE7ihiFIj1wnzI5bpnlSE",
   "AIzaSyBvdNScFHwsP7LKl4BY2Q1-psgZwdXEbrU",
   "AIzaSyAvYefxap7CVpbsEu-wQ_LfllMoK80qeAM",
-  "AIzaSyA8smfKLKNt1zPhZJs6R6bL_CwNAejje18"
+  "AIzaSyA8smfKLKNt1zPhZJs6R6bL_CwNAejje18",
+  "AIzaSyDXY3OmkeDouvJIQfZLToaq5uIQnRi-_fs"
 ];
+
+// Helper to normalize question text for comparison
+const normalizeQuestion = (q: string): string => 
+  q.toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 100);
+
+// Remove duplicate questions
+const deduplicateMCQs = (mcqs: MCQ[]): MCQ[] => {
+  const seen = new Set<string>();
+  return mcqs.filter(mcq => {
+    const key = normalizeQuestion(mcq.question);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
 
 let apiKeyIndex = 0;
 const getNextApiKey = () => {
@@ -274,11 +290,12 @@ Generate EXACTLY ${numQuestions} MCQs now with HIGHLY DETAILED Testbook-style ex
     // Combine all MCQs from all batches
     const allMcqs = results.flat();
     
-    // Renumber the questions
-    return allMcqs.map((mcq, idx) => ({
-      ...mcq,
-      question: mcq.question // Keep original question text
-    }));
+    // Remove duplicates to ensure unique questions
+    const uniqueMcqs = deduplicateMCQs(allMcqs);
+    
+    setStatus(`Generated ${uniqueMcqs.length} unique MCQs (removed ${allMcqs.length - uniqueMcqs.length} duplicates)`);
+    
+    return uniqueMcqs;
   };
 
   const parseMCQs = (text: string): MCQ[] => {
@@ -389,7 +406,7 @@ Generate EXACTLY ${numQuestions} MCQs now with HIGHLY DETAILED Testbook-style ex
       <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-2xl p-8 my-8">
         <div className="text-center mb-6">
           <div className="inline-block bg-gradient-to-r from-cyan-500 to-blue-600 text-white px-6 py-2 rounded-full text-sm font-bold mb-4 shadow-lg">
-            🚀 5 API KEYS • UP TO 500 MCQs • ULTRA-DETAILED EXPLANATIONS
+            🚀 6 API KEYS • UP TO 500 MCQs • 100% UNIQUE QUESTIONS
           </div>
           <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
             ⚡ SSC MCQ Generator Ultra
@@ -443,9 +460,10 @@ Generate EXACTLY ${numQuestions} MCQs now with HIGHLY DETAILED Testbook-style ex
         </div>
 
         <div className="bg-gradient-to-r from-cyan-50 to-blue-50 border-l-4 border-cyan-500 p-4 mb-4 rounded-lg">
-          <p className="font-bold text-cyan-800 mb-2">⚡ Speed Optimizations (5 API Keys):</p>
+          <p className="font-bold text-cyan-800 mb-2">⚡ Speed Optimizations (6 API Keys):</p>
           <ul className="text-sm text-cyan-700 space-y-1 ml-4">
-            <li>✓ <strong>5 Gemini API keys rotating</strong> for parallel processing</li>
+            <li>✓ <strong>6 Gemini API keys rotating</strong> for parallel processing</li>
+            <li>✓ <strong>Automatic deduplication</strong> ensures 100% unique questions</li>
             <li>✓ 40-page batches with 20 concurrent operations</li>
             <li>✓ <strong>Up to 500 MCQs</strong> per generation</li>
             <li>✓ 150K token context (50% larger)</li>
