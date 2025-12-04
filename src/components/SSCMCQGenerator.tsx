@@ -21,8 +21,23 @@ declare global {
   }
 }
 
-const GEMINI_API_KEY = "AIzaSyDWlAsiGp4UPF-cUwU4sVRvj1SU9qDUyt4";
-const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+const GEMINI_API_KEYS = [
+  "AIzaSyDWlAsiGp4UPF-cUwU4sVRvj1SU9qDUyt4",
+  "AIzaSyDxofRJS6ULe4hE7ihiFIj1wnzI5bpnlSE",
+  "AIzaSyBvdNScFHwsP7LKl4BY2Q1-psgZwdXEbrU",
+  "AIzaSyAvYefxap7CVpbsEu-wQ_LfllMoK80qeAM",
+  "AIzaSyA8smfKLKNt1zPhZJs6R6bL_CwNAejje18"
+];
+
+let apiKeyIndex = 0;
+const getNextApiKey = () => {
+  const key = GEMINI_API_KEYS[apiKeyIndex];
+  apiKeyIndex = (apiKeyIndex + 1) % GEMINI_API_KEYS.length;
+  return key;
+};
+
+const getGeminiUrl = (key: string) => 
+  `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
 
 const SSCMCQGenerator = () => {
   const [exam, setExam] = useState('SSC CGL');
@@ -102,8 +117,9 @@ const SSCMCQGenerator = () => {
   const processPageWithOCR = async (pdf: any, pageNum: number): Promise<string | null> => {
     try {
       const base64Data = await extractPageImage(pdf, pageNum);
+      const apiKey = getNextApiKey();
       
-      const response = await fetch(GEMINI_API_URL, {
+      const response = await fetch(getGeminiUrl(apiKey), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -170,11 +186,12 @@ const SSCMCQGenerator = () => {
   };
 
   const generateMCQs = async (content: string, numQuestions: number): Promise<MCQ[]> => {
-    setStatus('Generating MCQs with AI...');
+    setStatus('Generating MCQs with AI (using 5 API keys in rotation)...');
     
-    const contentChunk = content.length > 100000 ? content.substring(0, 100000) : content;
+    const contentChunk = content.length > 150000 ? content.substring(0, 150000) : content;
+    const apiKey = getNextApiKey();
     
-    const response = await fetch(GEMINI_API_URL, {
+    const response = await fetch(getGeminiUrl(apiKey), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -294,8 +311,8 @@ Generate ${numQuestions} MCQs now with HIGHLY DETAILED Testbook-style explanatio
       return;
     }
     
-    if (!count || count < 1 || count > 200) {
-      setError('Enter valid number (1-200)');
+    if (!count || count < 1 || count > 500) {
+      setError('Enter valid number (1-500)');
       return;
     }
     
@@ -339,7 +356,7 @@ Generate ${numQuestions} MCQs now with HIGHLY DETAILED Testbook-style explanatio
       <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-2xl p-8 my-8">
         <div className="text-center mb-6">
           <div className="inline-block bg-gradient-to-r from-cyan-500 to-blue-600 text-white px-6 py-2 rounded-full text-sm font-bold mb-4 shadow-lg">
-            🚀 MAXIMUM SPEED OPTIMIZED - 40% FASTER
+            🚀 5 API KEYS • UP TO 500 MCQs • ULTRA-DETAILED EXPLANATIONS
           </div>
           <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
             ⚡ SSC MCQ Generator Ultra
@@ -368,13 +385,13 @@ Generate ${numQuestions} MCQs now with HIGHLY DETAILED Testbook-style explanatio
           </div>
           
           <div>
-            <label className="block text-gray-700 font-semibold mb-2">🔢 MCQs (1-200)</label>
-            <input 
+            <label className="block text-gray-700 font-semibold mb-2">🔢 MCQs (1-500)</label>
+            <input
               type="number" 
               value={count}
               onChange={(e) => setCount(parseInt(e.target.value) || 1)}
               min="1"
-              max="200"
+              max="500"
               className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none transition-colors"
               disabled={processing || !pdfLibLoaded}
             />
@@ -393,27 +410,26 @@ Generate ${numQuestions} MCQs now with HIGHLY DETAILED Testbook-style explanatio
         </div>
 
         <div className="bg-gradient-to-r from-cyan-50 to-blue-50 border-l-4 border-cyan-500 p-4 mb-4 rounded-lg">
-          <p className="font-bold text-cyan-800 mb-2">⚡ Speed Optimizations:</p>
+          <p className="font-bold text-cyan-800 mb-2">⚡ Speed Optimizations (5 API Keys):</p>
           <ul className="text-sm text-cyan-700 space-y-1 ml-4">
-            <li>✓ 40-page batches (33% larger)</li>
-            <li>✓ 20 concurrent operations (33% more)</li>
-            <li>✓ Reduced image quality (70% faster encoding)</li>
-            <li>✓ Single OCR attempt (no retries)</li>
-            <li>✓ 100K token context (25% larger)</li>
-            <li>✓ Streamlined error handling</li>
+            <li>✓ <strong>5 Gemini API keys rotating</strong> for parallel processing</li>
+            <li>✓ 40-page batches with 20 concurrent operations</li>
+            <li>✓ <strong>Up to 500 MCQs</strong> per generation</li>
+            <li>✓ 150K token context (50% larger)</li>
+            <li>✓ Reduced image quality for faster OCR</li>
             <li>✓ Zero-delay processing pipeline</li>
-            <li>✓ Optimized canvas rendering</li>
           </ul>
         </div>
 
         <div className="bg-gradient-to-r from-purple-50 to-pink-50 border-l-4 border-purple-500 p-4 mb-6 rounded-lg">
-          <p className="font-bold text-purple-800 mb-2">🎓 Enhanced Explanations:</p>
+          <p className="font-bold text-purple-800 mb-2">🎓 Ultra-Detailed Explanations:</p>
           <ul className="text-sm text-purple-700 space-y-1 ml-4">
-            <li>✓ Testbook-style detailed explanations (3-4 sentences)</li>
-            <li>✓ Web search verification for accuracy</li>
-            <li>✓ Additional context and relevant facts</li>
-            <li>✓ Why correct answer is right + why others are wrong</li>
-            <li>✓ Educational and comprehensive approach</li>
+            <li>✓ <strong>7-point explanation format</strong> (5-8 sentences each)</li>
+            <li>✓ Why correct + why each wrong option is wrong</li>
+            <li>✓ Historical background & key facts/figures</li>
+            <li>✓ Memory tips & mnemonics included</li>
+            <li>✓ Related concepts & exam relevance</li>
+            <li>✓ Testbook-style comprehensive approach</li>
           </ul>
         </div>
 
