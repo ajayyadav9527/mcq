@@ -60,6 +60,8 @@ const getGeminiUrl = (key: string) =>
 const SSCMCQGenerator = () => {
   const [exam, setExam] = useState('SSC CGL');
   const [count, setCount] = useState(10);
+  const [autoCount, setAutoCount] = useState(false);
+  const [estimatedCount, setEstimatedCount] = useState(0);
   const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState<Progress>({ current: 0, total: 0, speed: 0, elapsed: 0 });
   const [mcqs, setMcqs] = useState<MCQ[]>([]);
@@ -97,6 +99,51 @@ const SSCMCQGenerator = () => {
     
     loadPdfLib();
   }, []);
+
+  // Estimate optimal MCQ count based on PDF content
+  const estimateMCQCount = async (file: File): Promise<number> => {
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const numPages = pdf.numPages;
+      
+      // Sample a few pages to estimate content density
+      let totalChars = 0;
+      const samplesToTake = Math.min(5, numPages);
+      const sampleIndices = Array.from({ length: samplesToTake }, (_, i) => 
+        Math.floor((i / samplesToTake) * numPages) + 1
+      );
+      
+      for (const pageNum of sampleIndices) {
+        const text = await extractPageText(pdf, pageNum);
+        if (text) totalChars += text.length;
+      }
+      
+      const avgCharsPerPage = totalChars / samplesToTake;
+      const estimatedTotalChars = avgCharsPerPage * numPages;
+      
+      // Formula: ~1 MCQ per 500 characters, minimum 3 per page, max 500
+      const byChars = Math.ceil(estimatedTotalChars / 500);
+      const byPages = numPages * 3;
+      const estimated = Math.min(500, Math.max(10, Math.round((byChars + byPages) / 2)));
+      
+      return estimated;
+    } catch {
+      // Fallback: 3 MCQs per page
+      return 30;
+    }
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && pdfLibLoaded && autoCount) {
+      setStatus('📊 Analyzing PDF content...');
+      const estimated = await estimateMCQCount(file);
+      setEstimatedCount(estimated);
+      setCount(estimated);
+      setStatus('');
+    }
+  };
 
   const updateProgress = (completed: number, total: number) => {
     const elapsed = (Date.now() - processingRef.current.startTime) / 1000;
@@ -408,7 +455,7 @@ Generate EXACTLY ${numQuestions} MCQs now with HIGHLY DETAILED Testbook-style ex
       <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-2xl p-8 my-8">
         <div className="text-center mb-6">
           <div className="inline-block bg-gradient-to-r from-cyan-500 to-blue-600 text-white px-6 py-2 rounded-full text-sm font-bold mb-4 shadow-lg">
-            🚀 8 API KEYS • UP TO 500 MCQs • 100% UNIQUE QUESTIONS
+            🚀 8 API KEYS • AUTO COVERAGE • 100% UNIQUE
           </div>
           <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
             ⚡ SSC MCQ Generator Ultra
@@ -445,9 +492,43 @@ Generate EXACTLY ${numQuestions} MCQs now with HIGHLY DETAILED Testbook-style ex
               min="1"
               max="500"
               className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none transition-colors"
-              disabled={processing || !pdfLibLoaded}
+              disabled={processing || !pdfLibLoaded || autoCount}
             />
           </div>
+        </div>
+
+        {/* Auto Coverage Option */}
+        <div className="mb-4 p-4 bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-300 rounded-xl">
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={autoCount}
+              onChange={(e) => {
+                setAutoCount(e.target.checked);
+                if (!e.target.checked) {
+                  setEstimatedCount(0);
+                } else if (fileInputRef.current?.files?.[0]) {
+                  // Re-estimate if file already selected
+                  const file = fileInputRef.current.files[0];
+                  estimateMCQCount(file).then(est => {
+                    setEstimatedCount(est);
+                    setCount(est);
+                  });
+                }
+              }}
+              className="w-5 h-5 accent-green-600"
+              disabled={processing || !pdfLibLoaded}
+            />
+            <div>
+              <span className="font-bold text-green-800">🎯 Auto Coverage Mode</span>
+              <p className="text-sm text-green-700">Automatically calculate optimal MCQs to cover entire PDF content</p>
+            </div>
+          </label>
+          {autoCount && estimatedCount > 0 && (
+            <div className="mt-2 ml-8 text-sm font-semibold text-green-800 bg-green-100 px-3 py-1 rounded-full inline-block">
+              📊 Estimated: {estimatedCount} MCQs for full coverage
+            </div>
+          )}
         </div>
 
         <div className="mb-6">
@@ -456,6 +537,7 @@ Generate EXACTLY ${numQuestions} MCQs now with HIGHLY DETAILED Testbook-style ex
             type="file" 
             ref={fileInputRef}
             accept=".pdf"
+            onChange={handleFileChange}
             className="w-full p-3 border-2 border-gray-300 rounded-lg bg-gray-50 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
             disabled={processing || !pdfLibLoaded}
           />
