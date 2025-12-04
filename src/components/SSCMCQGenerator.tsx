@@ -261,7 +261,7 @@ const SSCMCQGenerator = () => {
       body: JSON.stringify({
         contents: [{
           parts: [{
-            text: `You are an expert ${exam} exam question creator and educator. Generate EXACTLY ${numQuestions} high-quality MCQs from the provided content. This is batch ${batchNum} of ${totalBatches}.
+            text: `You are an expert ${exam} exam teacher who explains concepts in SIMPLE, CLEAR language that any student can understand. Generate EXACTLY ${numQuestions} high-quality MCQs from the provided content. This is batch ${batchNum} of ${totalBatches}.
 
 FORMAT (strict - follow exactly):
 Q1. [Question]
@@ -270,34 +270,49 @@ b) [Option]
 c) [Option]
 d) [Option]
 Correct Answer: a
-Explanation: [VERY DETAILED explanation - see requirements below]
+Explanation: [CRYSTAL CLEAR explanation - see requirements below]
 
-CRITICAL EXPLANATION REQUIREMENTS (MOST IMPORTANT):
-Each explanation MUST be 5-8 sentences and include ALL of these elements:
-1. **Why Correct**: Start with "The correct answer is [letter]) because..." and explain the core concept thoroughly
-2. **Background Context**: Provide historical background, origin, or foundational information about the topic
-3. **Key Facts & Figures**: Include specific dates, numbers, statistics, names, or data points related to the answer
-4. **Related Concepts**: Connect to related topics, acts, amendments, or concepts that help deeper understanding
-5. **Memory Tip**: Add a mnemonic, trick, or easy way to remember this fact
-6. **Why Others Wrong**: Briefly explain why each wrong option (a/b/c/d) is incorrect with specific reasons
-7. **Exam Relevance**: Mention if this topic is frequently asked in ${exam} or related exams
+EXPLANATION REQUIREMENTS - WRITE LIKE A FRIENDLY TEACHER:
+Each explanation MUST be 6-10 sentences, written in SIMPLE language a 10th-grade student can understand:
 
-EXAMPLE EXPLANATION FORMAT:
-"The correct answer is b) 1950 because the Constitution of India came into effect on January 26, 1950. This date was chosen to commemorate the Purna Swaraj declaration of 1930. Dr. B.R. Ambedkar, as the Chairman of the Drafting Committee, played a crucial role in its creation. The Constitution originally had 395 Articles, 22 Parts, and 8 Schedules. Memory tip: '26 January = Republic Day = Constitution Day'. Option a) 1947 is wrong as that was Independence Day; c) 1952 was the first general elections; d) 1949 was when the Constitution was adopted (November 26), not enforced. This is a very frequently asked question in ${exam} Polity section."
+✅ START: "The correct answer is [option letter]) [option text]."
+
+✅ EXPLAIN THE CONCEPT SIMPLY:
+- Explain the concept in everyday language, avoiding jargon
+- Use analogies or real-world examples when possible
+- Break down complex ideas into simple parts
+
+✅ KEY FACTS TO REMEMBER:
+- Mention important dates, names, numbers, or facts
+- Highlight what makes this answer unique or special
+
+✅ WHY OTHER OPTIONS ARE WRONG:
+- For EACH wrong option, explain in 1 sentence why it's incorrect
+- Example: "Option a) is wrong because..."
+
+✅ MEMORY TIP:
+- Give an easy trick, mnemonic, or association to remember this
+- Example: "Easy way to remember: Think of..."
+
+✅ EXAM TIP (if relevant):
+- Mention if this is frequently asked in ${exam}
+
+EXAMPLE OF PERFECT EXPLANATION:
+"The correct answer is b) 1950. The Indian Constitution came into effect on January 26, 1950 - this is why we celebrate Republic Day on this date every year. Think of it simply: Independence Day (August 15, 1947) = freedom from British rule, but Republic Day (January 26, 1950) = India became a democratic republic with its own Constitution. Dr. B.R. Ambedkar led the team that wrote it. Option a) 1947 is wrong - that's when we got independence, not the Constitution. Option c) 1952 is wrong - that's when the first elections happened. Option d) 1949 is wrong - the Constitution was completed on November 26, 1949, but it started working from January 26, 1950. Easy memory trick: '26-26' - November 26 completed, January 26 started! This is one of the most frequently asked questions in ${exam} exams."
 
 OTHER REQUIREMENTS:
 - YOU MUST GENERATE EXACTLY ${numQuestions} MCQs - no more, no less
 - Correct Answer MUST be only a single letter: a, b, c, or d
 - Cover different topics from the content
-- ${exam} difficulty level matching Testbook standards
-- Ensure all 4 options are distinct and plausible
-- Questions should test conceptual understanding, not just rote memorization
-${batchNum > 1 ? `- Generate DIFFERENT questions from previous batches - focus on different aspects of the content` : ''}
+- ${exam} difficulty level
+- All 4 options must be distinct and believable
+- Test understanding, not just memorization
+${batchNum > 1 ? `- Generate DIFFERENT questions from previous batches - cover different parts of the content` : ''}
 
 CONTENT:
 ${content}
 
-Generate EXACTLY ${numQuestions} MCQs now with HIGHLY DETAILED Testbook-style explanations:`
+Generate EXACTLY ${numQuestions} MCQs now with CLEAR, STUDENT-FRIENDLY explanations:`
           }]
         }],
         generationConfig: {
