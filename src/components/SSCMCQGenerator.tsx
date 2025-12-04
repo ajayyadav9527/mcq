@@ -261,10 +261,33 @@ const SSCMCQGenerator = () => {
       body: JSON.stringify({
         contents: [{
           parts: [{
-            text: `You are an expert ${exam} exam teacher who explains concepts in SIMPLE, CLEAR language that any student can understand. Generate EXACTLY ${numQuestions} high-quality MCQs from the provided content. This is batch ${batchNum} of ${totalBatches}.
+            text: `You are an expert ${exam} exam teacher with deep knowledge of RECENT SSC EXAM TRENDS and FREQUENTLY ASKED TOPICS. Generate EXACTLY ${numQuestions} high-quality MCQs from the provided content. This is batch ${batchNum} of ${totalBatches}.
+
+🎯 CRITICAL - SSC EXAM TREND FOCUS:
+You MUST prioritize creating MCQs on topics that are:
+1. FREQUENTLY ASKED in recent ${exam} exams (2020-2024)
+2. HIGH-WEIGHTAGE concepts that appear repeatedly across SSC papers
+3. TRENDING TOPICS that SSC has been focusing on recently
+4. IMPORTANT FACTS, DATES, NAMES that are SSC favorites
+5. CONCEPTS that students commonly get wrong in exams
+
+⚠️ NEVER SKIP important concepts from the content - if a concept is exam-relevant, CREATE AN MCQ on it!
+
+COMMON SSC EXAM PATTERNS TO FOCUS ON:
+- First/Largest/Smallest/Longest facts
+- Important dates, years, and anniversaries
+- Authors and their famous works
+- Headquarters locations
+- Constitutional articles and amendments
+- Scientific discoveries and inventors
+- Rivers, mountains, boundaries
+- Awards, honors, and recipients
+- Government schemes and their launch years
+- International organizations and India's role
+- Recent current affairs mixed with static GK
 
 FORMAT (strict - follow exactly):
-Q1. [Question]
+Q1. [Question - frame like actual SSC exam questions]
 a) [Option]
 b) [Option]
 c) [Option]
@@ -285,6 +308,7 @@ Each explanation MUST be 6-10 sentences, written in SIMPLE language a 10th-grade
 ✅ KEY FACTS TO REMEMBER:
 - Mention important dates, names, numbers, or facts
 - Highlight what makes this answer unique or special
+- Add related facts that might appear in exams
 
 ✅ WHY OTHER OPTIONS ARE WRONG:
 - For EACH wrong option, explain in 1 sentence why it's incorrect
@@ -294,25 +318,28 @@ Each explanation MUST be 6-10 sentences, written in SIMPLE language a 10th-grade
 - Give an easy trick, mnemonic, or association to remember this
 - Example: "Easy way to remember: Think of..."
 
-✅ EXAM TIP (if relevant):
-- Mention if this is frequently asked in ${exam}
+✅ SSC EXAM TIP:
+- "🔥 SSC TREND: This topic has appeared in [X] recent exams"
+- Mention related questions that might be asked
+- Alert about tricky variations SSC uses
 
 EXAMPLE OF PERFECT EXPLANATION:
-"The correct answer is b) 1950. The Indian Constitution came into effect on January 26, 1950 - this is why we celebrate Republic Day on this date every year. Think of it simply: Independence Day (August 15, 1947) = freedom from British rule, but Republic Day (January 26, 1950) = India became a democratic republic with its own Constitution. Dr. B.R. Ambedkar led the team that wrote it. Option a) 1947 is wrong - that's when we got independence, not the Constitution. Option c) 1952 is wrong - that's when the first elections happened. Option d) 1949 is wrong - the Constitution was completed on November 26, 1949, but it started working from January 26, 1950. Easy memory trick: '26-26' - November 26 completed, January 26 started! This is one of the most frequently asked questions in ${exam} exams."
+"The correct answer is b) 1950. The Indian Constitution came into effect on January 26, 1950 - this is why we celebrate Republic Day on this date every year. Think of it simply: Independence Day (August 15, 1947) = freedom from British rule, but Republic Day (January 26, 1950) = India became a democratic republic with its own Constitution. Dr. B.R. Ambedkar led the team that wrote it. Option a) 1947 is wrong - that's when we got independence, not the Constitution. Option c) 1952 is wrong - that's when the first elections happened. Option d) 1949 is wrong - the Constitution was completed on November 26, 1949, but it started working from January 26, 1950. Easy memory trick: '26-26' - November 26 completed, January 26 started! 🔥 SSC TREND: This is one of the MOST frequently asked questions - SSC often asks about Constitution dates, Preamble keywords, and Fundamental Rights."
 
 OTHER REQUIREMENTS:
 - YOU MUST GENERATE EXACTLY ${numQuestions} MCQs - no more, no less
+- Frame questions EXACTLY like real ${exam} papers
+- Include tricky distractors that SSC typically uses
 - Correct Answer MUST be only a single letter: a, b, c, or d
-- Cover different topics from the content
-- ${exam} difficulty level
+- Cover ALL important topics from the content - don't miss any exam-relevant concept
 - All 4 options must be distinct and believable
-- Test understanding, not just memorization
+- Test understanding AND factual recall (SSC tests both)
 ${batchNum > 1 ? `- Generate DIFFERENT questions from previous batches - cover different parts of the content` : ''}
 
-CONTENT:
+CONTENT TO ANALYZE (extract ALL exam-relevant facts):
 ${content}
 
-Generate EXACTLY ${numQuestions} MCQs now with CLEAR, STUDENT-FRIENDLY explanations:`
+Generate EXACTLY ${numQuestions} MCQs now, focusing on SSC EXAM TRENDS with CLEAR, STUDENT-FRIENDLY explanations:`
           }]
         }],
         generationConfig: {
