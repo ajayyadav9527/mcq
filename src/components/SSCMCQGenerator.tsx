@@ -124,10 +124,10 @@ const SSCMCQGenerator = () => {
       const avgCharsPerPage = totalChars / samplesToTake;
       const estimatedTotalChars = avgCharsPerPage * numPages;
       
-      // Formula: ~1 MCQ per 500 characters, minimum 3 per page, max 500
-      const byChars = Math.ceil(estimatedTotalChars / 500);
-      const byPages = numPages * 3;
-      const estimated = Math.min(500, Math.max(10, Math.round((byChars + byPages) / 2)));
+      // Formula: ~1 MCQ per 400 characters for thorough coverage, minimum 4 per page, max 500
+      const byChars = Math.ceil(estimatedTotalChars / 400);
+      const byPages = numPages * 4;
+      const estimated = Math.min(500, Math.max(15, Math.round((byChars + byPages) / 2)));
       
       return estimated;
     } catch {
@@ -315,25 +315,67 @@ Generate EXACTLY ${numQuestions} MCQs now with HIGHLY DETAILED Testbook-style ex
   };
 
   const generateMCQs = async (content: string, numQuestions: number): Promise<MCQ[]> => {
-    const contentChunk = content.length > 150000 ? content.substring(0, 150000) : content;
+    // Split content into chunks to ensure FULL PDF coverage
+    const MAX_CHUNK_SIZE = 80000; // chars per chunk for better API handling
+    const contentChunks: string[] = [];
     
-    // Split into batches of 40 MCQs max per API call for better results
-    const BATCH_SIZE = 40;
-    const numBatches = Math.ceil(numQuestions / BATCH_SIZE);
-    const batches: { questions: number; batchNum: number }[] = [];
+    // Split by page markers to keep content coherent
+    const pages = content.split(/(?=--- Page \d+ ---)/);
+    let currentChunk = '';
     
-    let remaining = numQuestions;
-    for (let i = 0; i < numBatches; i++) {
-      const questionsInBatch = Math.min(BATCH_SIZE, remaining);
-      batches.push({ questions: questionsInBatch, batchNum: i + 1 });
-      remaining -= questionsInBatch;
+    for (const page of pages) {
+      if (currentChunk.length + page.length > MAX_CHUNK_SIZE && currentChunk.length > 0) {
+        contentChunks.push(currentChunk);
+        currentChunk = page;
+      } else {
+        currentChunk += page;
+      }
+    }
+    if (currentChunk.trim()) contentChunks.push(currentChunk);
+    
+    // If no page markers, split by character count
+    if (contentChunks.length === 0) {
+      for (let i = 0; i < content.length; i += MAX_CHUNK_SIZE) {
+        contentChunks.push(content.substring(i, i + MAX_CHUNK_SIZE));
+      }
     }
     
-    setStatus(`Generating ${numQuestions} MCQs in ${numBatches} parallel batches...`);
+    // Distribute questions across content chunks proportionally
+    const numChunks = contentChunks.length;
+    const questionsPerChunk = Math.ceil(numQuestions / numChunks);
+    
+    // Create batches - each batch gets a different chunk of content
+    const BATCH_SIZE = 40;
+    const batches: { content: string; questions: number; batchNum: number; chunkNum: number }[] = [];
+    let batchNum = 1;
+    
+    for (let chunkIdx = 0; chunkIdx < numChunks; chunkIdx++) {
+      const chunkContent = contentChunks[chunkIdx];
+      let questionsForThisChunk = chunkIdx === numChunks - 1 
+        ? numQuestions - (questionsPerChunk * (numChunks - 1))  // Last chunk gets remaining
+        : questionsPerChunk;
+      
+      questionsForThisChunk = Math.max(1, questionsForThisChunk);
+      
+      // Split chunk questions into sub-batches of 40 max
+      let remaining = questionsForThisChunk;
+      while (remaining > 0) {
+        const questionsInBatch = Math.min(BATCH_SIZE, remaining);
+        batches.push({ 
+          content: chunkContent, 
+          questions: questionsInBatch, 
+          batchNum: batchNum++,
+          chunkNum: chunkIdx + 1
+        });
+        remaining -= questionsInBatch;
+      }
+    }
+    
+    setStatus(`Generating ${numQuestions} MCQs from ${numChunks} content sections (${batches.length} batches)...`);
     
     // Run all batches in parallel using different API keys
     const batchPromises = batches.map(batch => 
-      generateMCQsBatch(contentChunk, batch.questions, batch.batchNum, numBatches)
+      generateMCQsBatch(batch.content, batch.questions, batch.batchNum, batches.length)
     );
     
     const results = await Promise.all(batchPromises);
@@ -344,7 +386,7 @@ Generate EXACTLY ${numQuestions} MCQs now with HIGHLY DETAILED Testbook-style ex
     // Remove duplicates to ensure unique questions
     const uniqueMcqs = deduplicateMCQs(allMcqs);
     
-    setStatus(`Generated ${uniqueMcqs.length} unique MCQs (removed ${allMcqs.length - uniqueMcqs.length} duplicates)`);
+    setStatus(`Generated ${uniqueMcqs.length} unique MCQs covering ALL content (${numChunks} sections)`);
     
     return uniqueMcqs;
   };
