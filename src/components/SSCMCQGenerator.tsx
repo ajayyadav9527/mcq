@@ -29,7 +29,9 @@ const GEMINI_API_KEYS = [
   "AIzaSyA8smfKLKNt1zPhZJs6R6bL_CwNAejje18",
   "AIzaSyDXY3OmkeDouvJIQfZLToaq5uIQnRi-_fs",
   "AIzaSyDC-bIzdacH5RoPI3kIbihmVaIe_mIUAqI",
-  "AIzaSyB2Ga7EGjUs7Y6nj385V_-ZDdjvoNbc3uM"
+  "AIzaSyB2Ga7EGjUs7Y6nj385V_-ZDdjvoNbc3uM",
+  "AIzaSyAqrv36ro2zwXbVTSvqmWFPsPPptdAD0rE",
+  "AIzaSyAzR-Ege3fmjAWp1f6WCrN_YnJOUVJEM-U"
 ];
 
 // Helper to normalize question text for comparison
@@ -455,7 +457,7 @@ Generate EXACTLY ${numQuestions} MCQs now with HIGHLY DETAILED Testbook-style ex
       <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-2xl p-8 my-8">
         <div className="text-center mb-6">
           <div className="inline-block bg-gradient-to-r from-cyan-500 to-blue-600 text-white px-6 py-2 rounded-full text-sm font-bold mb-4 shadow-lg">
-            🚀 8 API KEYS • AUTO COVERAGE • 100% UNIQUE
+            🚀 10 API KEYS • AUTO COVERAGE • 100% UNIQUE
           </div>
           <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
             ⚡ SSC MCQ Generator Ultra
@@ -544,9 +546,9 @@ Generate EXACTLY ${numQuestions} MCQs now with HIGHLY DETAILED Testbook-style ex
         </div>
 
         <div className="bg-gradient-to-r from-cyan-50 to-blue-50 border-l-4 border-cyan-500 p-4 mb-4 rounded-lg">
-          <p className="font-bold text-cyan-800 mb-2">⚡ Speed Optimizations (8 API Keys):</p>
+          <p className="font-bold text-cyan-800 mb-2">⚡ Speed Optimizations (10 API Keys):</p>
           <ul className="text-sm text-cyan-700 space-y-1 ml-4">
-            <li>✓ <strong>8 Gemini API keys rotating</strong> for parallel processing</li>
+            <li>✓ <strong>10 Gemini API keys rotating</strong> for parallel processing</li>
             <li>✓ <strong>Automatic deduplication</strong> ensures 100% unique questions</li>
             <li>✓ 40-page batches with 20 concurrent operations</li>
             <li>✓ <strong>Up to 500 MCQs</strong> per generation</li>
