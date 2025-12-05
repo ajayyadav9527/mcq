@@ -35,17 +35,49 @@ const GEMINI_API_KEYS = [
   "AIzaSyAzR-Ege3fmjAWp1f6WCrN_YnJOUVJEM-U"
 ];
 
-// Helper to normalize question text for comparison
+// Helper to normalize question text for comparison - multiple strategies
 const normalizeQuestion = (q: string): string => 
-  q.toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 100);
+  q.toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 150);
 
-// Remove duplicate questions
+// Extract key facts from question for semantic matching
+const extractKeyFacts = (q: string): string => {
+  const normalized = q.toLowerCase();
+  // Extract numbers, dates, proper nouns
+  const numbers = (normalized.match(/\d+/g) || []).join('');
+  const words = normalized.split(/\s+/).filter(w => w.length > 4).slice(0, 8).join('');
+  return numbers + words;
+};
+
+// Remove duplicate questions using multiple detection strategies
 const deduplicateMCQs = (mcqs: MCQ[]): MCQ[] => {
-  const seen = new Set<string>();
+  const seenExact = new Set<string>();
+  const seenKeyFacts = new Set<string>();
+  const seenCorrectAnswer = new Map<string, Set<string>>(); // Track Q+correct combos
+  
   return mcqs.filter(mcq => {
-    const key = normalizeQuestion(mcq.question);
-    if (seen.has(key)) return false;
-    seen.add(key);
+    // Strategy 1: Exact normalized match
+    const exactKey = normalizeQuestion(mcq.question);
+    if (seenExact.has(exactKey)) return false;
+    
+    // Strategy 2: Key facts match (catches rephrased duplicates)
+    const factsKey = extractKeyFacts(mcq.question);
+    if (factsKey.length > 10 && seenKeyFacts.has(factsKey)) return false;
+    
+    // Strategy 3: Same topic + same correct answer often = duplicate
+    const shortQ = mcq.question.toLowerCase().substring(0, 50);
+    const answerSet = seenCorrectAnswer.get(mcq.correct) || new Set();
+    for (const existing of answerSet) {
+      // If 70%+ overlap in first 50 chars with same answer, likely duplicate
+      const overlap = [...shortQ].filter((c, i) => existing[i] === c).length;
+      if (overlap / shortQ.length > 0.7) return false;
+    }
+    
+    // Mark as seen
+    seenExact.add(exactKey);
+    if (factsKey.length > 10) seenKeyFacts.add(factsKey);
+    answerSet.add(shortQ);
+    seenCorrectAnswer.set(mcq.correct, answerSet);
+    
     return true;
   });
 };
