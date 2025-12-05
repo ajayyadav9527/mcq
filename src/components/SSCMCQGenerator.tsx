@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 interface MCQ {
   question: string;
@@ -60,13 +61,13 @@ const getGeminiUrl = (key: string) =>
   `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
 
 const SSCMCQGenerator = () => {
+  const navigate = useNavigate();
   const [exam, setExam] = useState('SSC CGL');
   const [count, setCount] = useState(10);
   const [autoCount, setAutoCount] = useState(true);
   const [estimatedCount, setEstimatedCount] = useState(0);
   const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState<Progress>({ current: 0, total: 0, speed: 0, elapsed: 0 });
-  const [mcqs, setMcqs] = useState<MCQ[]>([]);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const [pdfLibLoaded, setPdfLibLoaded] = useState(false);
@@ -503,7 +504,6 @@ Generate EXACTLY ${numQuestions} MCQs now, focusing on SSC EXAM TRENDS with CLEA
     
     setProcessing(true);
     setError('');
-    setMcqs([]);
     setStatus('Loading PDF...');
     setProgress({ current: 0, total: 0, speed: 0, elapsed: 0 });
     
@@ -521,19 +521,14 @@ Generate EXACTLY ${numQuestions} MCQs now, focusing on SSC EXAM TRENDS with CLEA
       setStatus('Generating MCQs...');
       const generatedMCQs = await generateMCQs(content, count);
       
-      setMcqs(generatedMCQs);
       setStatus('');
+      // Navigate to quiz page with generated MCQs
+      navigate('/quiz', { state: { mcqs: generatedMCQs } });
     } catch (err: any) {
       setError(`Error: ${err.message}`);
     } finally {
       setProcessing(false);
     }
-  };
-
-  const selectAnswer = (qIdx: number, optionLetter: string) => {
-    setMcqs(prev => prev.map((q, idx) => 
-      idx === qIdx ? { ...q, selected: optionLetter } : q
-    ));
   };
 
   return (
@@ -710,63 +705,6 @@ Generate EXACTLY ${numQuestions} MCQs now, focusing on SSC EXAM TRENDS with CLEA
             <p className="text-center mt-4 text-lg font-semibold text-gray-700">
               ⏱️ Time: {Math.floor(progress.elapsed / 60)}m {progress.elapsed % 60}s
             </p>
-          </div>
-        )}
-
-        {mcqs.length > 0 && (
-          <div className="mt-8">
-            <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-400 p-6 rounded-lg mb-6 text-center shadow-md">
-              <h2 className="text-2xl font-bold text-green-600 mb-2">✅ Success!</h2>
-              <p className="text-lg text-gray-700">Generated {mcqs.length} high-quality MCQs</p>
-              <p className="text-sm text-gray-600 mt-2">Click any option to reveal the answer</p>
-            </div>
-
-            {mcqs.map((mcq, qIdx) => (
-              <div key={qIdx} className="bg-white border-2 border-gray-200 rounded-lg p-6 mb-6 hover:shadow-xl transition-all duration-300 hover:border-blue-300">
-                <p className="font-bold text-lg text-gray-800 mb-4">Q{qIdx + 1}. {mcq.question}</p>
-                
-                <div className="space-y-2 mb-4">
-                  {mcq.options.map((option, oIdx) => {
-                    const letter = String.fromCharCode(97 + oIdx);
-                    const isSelected = mcq.selected === letter;
-                    const isCorrect = mcq.correct === letter;
-                    const showResult = mcq.selected !== null;
-                    
-                    let className = "p-3 border-2 rounded-lg cursor-pointer transition-all duration-200 ";
-                    if (!showResult) {
-                      className += "border-gray-300 hover:border-blue-500 hover:bg-blue-50 hover:translate-x-1 hover:shadow-md";
-                    } else {
-                      if (isCorrect) {
-                        className += "border-green-500 bg-green-50 shadow-md";
-                      } else if (isSelected) {
-                        className += "border-red-500 bg-red-50 shadow-md";
-                      } else {
-                        className += "border-gray-300 opacity-60";
-                      }
-                    }
-                    
-                    return (
-                      <div 
-                        key={oIdx}
-                        className={className}
-                        onClick={() => !showResult && selectAnswer(qIdx, letter)}
-                      >
-                        {option}
-                        {showResult && isCorrect && <span className="ml-2 text-green-600 font-bold">✓</span>}
-                        {showResult && isSelected && !isCorrect && <span className="ml-2 text-red-600 font-bold">✗</span>}
-                      </div>
-                    );
-                  })}
-                </div>
-                
-                {mcq.selected !== null && (
-                  <div className="bg-gradient-to-r from-amber-50 to-yellow-50 border-l-4 border-amber-400 p-4 rounded-lg shadow-inner">
-                    <p className="font-bold text-amber-800 mb-2">💡 Explanation:</p>
-                    <p className="text-amber-900 leading-relaxed">{mcq.explanation || 'No explanation available.'}</p>
-                  </div>
-                )}
-              </div>
-            ))}
           </div>
         )}
       </div>
