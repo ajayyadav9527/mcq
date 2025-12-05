@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { ChevronLeft, ChevronRight, RotateCcw, Home, Clock, CheckCircle2, XCircle, Circle, BookOpen } from 'lucide-react';
 
 interface MCQ {
   question: string;
@@ -16,6 +17,8 @@ const Quiz = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showResult, setShowResult] = useState(false);
   const [quizCompleted, setQuizCompleted] = useState(false);
+  const [elapsedTime, setElapsedTime] = useState(0);
+  const [showPalette, setShowPalette] = useState(true);
 
   useEffect(() => {
     const state = location.state as { mcqs: MCQ[] } | null;
@@ -26,11 +29,28 @@ const Quiz = () => {
     }
   }, [location, navigate]);
 
+  // Timer
+  useEffect(() => {
+    if (!quizCompleted && mcqs.length > 0) {
+      const timer = setInterval(() => setElapsedTime(t => t + 1), 1000);
+      return () => clearInterval(timer);
+    }
+  }, [quizCompleted, mcqs.length]);
+
+  const formatTime = (seconds: number) => {
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
   const currentMCQ = mcqs[currentIndex];
   
   const correctCount = mcqs.filter(q => q.selected === q.correct).length;
-  const wrongCount = mcqs.filter(q => q.selected !== null && q.selected !== q.correct).length;
-  const attemptedCount = mcqs.filter(q => q.selected !== null).length;
+  const wrongCount = mcqs.filter(q => q.selected !== null && q.selected !== '' && q.selected !== q.correct).length;
+  const attemptedCount = mcqs.filter(q => q.selected !== null && q.selected !== '').length;
+  const skippedCount = mcqs.filter(q => q.selected === '').length;
+  const notVisitedCount = mcqs.filter(q => q.selected === null).length;
 
   const selectAnswer = (letter: string) => {
     if (showResult) return;
@@ -44,7 +64,7 @@ const Quiz = () => {
   const nextQuestion = () => {
     if (currentIndex < mcqs.length - 1) {
       setCurrentIndex(prev => prev + 1);
-      setShowResult(false);
+      setShowResult(mcqs[currentIndex + 1]?.selected !== null);
     } else {
       setQuizCompleted(true);
     }
@@ -53,8 +73,13 @@ const Quiz = () => {
   const prevQuestion = () => {
     if (currentIndex > 0) {
       setCurrentIndex(prev => prev - 1);
-      setShowResult(mcqs[currentIndex - 1].selected !== null);
+      setShowResult(mcqs[currentIndex - 1]?.selected !== null);
     }
+  };
+
+  const goToQuestion = (idx: number) => {
+    setCurrentIndex(idx);
+    setShowResult(mcqs[idx].selected !== null);
   };
 
   const restartQuiz = () => {
@@ -62,12 +87,20 @@ const Quiz = () => {
     setCurrentIndex(0);
     setShowResult(false);
     setQuizCompleted(false);
+    setElapsedTime(0);
+  };
+
+  const getQuestionStatus = (q: MCQ) => {
+    if (q.selected === null) return 'not-visited';
+    if (q.selected === '') return 'skipped';
+    if (q.selected === q.correct) return 'correct';
+    return 'wrong';
   };
 
   if (mcqs.length === 0) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-900 via-indigo-900 to-purple-900 flex items-center justify-center">
-        <div className="text-white text-xl">Loading...</div>
+      <div className="min-h-screen bg-muted flex items-center justify-center">
+        <div className="text-foreground text-xl">Loading...</div>
       </div>
     );
   }
@@ -78,76 +111,125 @@ const Quiz = () => {
     const grade = percentage >= 90 ? 'A+' : percentage >= 80 ? 'A' : percentage >= 70 ? 'B' : percentage >= 60 ? 'C' : percentage >= 50 ? 'D' : 'F';
     
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-900 via-indigo-900 to-purple-900 p-4">
-        <div className="max-w-2xl mx-auto bg-white rounded-2xl shadow-2xl p-8 my-8">
-          <div className="text-center mb-8">
-            <div className="w-32 h-32 mx-auto mb-4 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center">
-              <span className="text-5xl font-bold text-white">{grade}</span>
-            </div>
-            <h1 className="text-3xl font-bold text-gray-800 mb-2">Quiz Completed! 🎉</h1>
-            <p className="text-gray-600">Here's your performance summary</p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4 mb-8">
-            <div className="bg-gradient-to-br from-green-50 to-emerald-100 p-6 rounded-xl text-center border-2 border-green-300">
-              <p className="text-5xl font-bold text-green-600 mb-2">{correctCount}</p>
-              <p className="text-green-700 font-semibold">✅ Correct</p>
-            </div>
-            <div className="bg-gradient-to-br from-red-50 to-rose-100 p-6 rounded-xl text-center border-2 border-red-300">
-              <p className="text-5xl font-bold text-red-600 mb-2">{wrongCount}</p>
-              <p className="text-red-700 font-semibold">❌ Wrong</p>
+      <div className="min-h-screen bg-muted">
+        {/* Header */}
+        <div className="bg-primary text-primary-foreground py-4 px-6 shadow-md">
+          <div className="max-w-4xl mx-auto flex items-center justify-between">
+            <h1 className="text-xl font-bold">Quiz Results</h1>
+            <div className="flex items-center gap-2 text-sm">
+              <Clock className="w-4 h-4" />
+              <span>Time: {formatTime(elapsedTime)}</span>
             </div>
           </div>
+        </div>
 
-          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-xl mb-8 border-2 border-blue-200">
-            <div className="flex justify-between items-center mb-4">
-              <span className="text-gray-700 font-semibold">Score</span>
-              <span className="text-2xl font-bold text-blue-600">{correctCount}/{mcqs.length}</span>
-            </div>
-            <div className="w-full bg-gray-200 rounded-full h-4 overflow-hidden">
-              <div 
-                className={`h-full rounded-full transition-all duration-1000 ${
-                  percentage >= 70 ? 'bg-gradient-to-r from-green-500 to-emerald-500' :
-                  percentage >= 50 ? 'bg-gradient-to-r from-yellow-500 to-amber-500' :
-                  'bg-gradient-to-r from-red-500 to-rose-500'
-                }`}
-                style={{ width: `${percentage}%` }}
-              />
-            </div>
-            <p className="text-center mt-2 text-lg font-bold text-gray-700">{percentage}%</p>
-          </div>
-
-          <div className="bg-gray-50 p-4 rounded-xl mb-6">
-            <h3 className="font-bold text-gray-700 mb-3">📊 Performance Stats</h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-600">Total Questions</span>
-                <span className="font-semibold">{mcqs.length}</span>
+        <div className="max-w-4xl mx-auto p-6">
+          {/* Score Card */}
+          <div className="bg-card rounded-lg shadow-sm border border-border p-8 mb-6">
+            <div className="flex items-center justify-center gap-8 mb-8">
+              <div className="text-center">
+                <div className="w-28 h-28 rounded-full bg-primary/10 border-4 border-primary flex items-center justify-center mb-2">
+                  <span className="text-4xl font-bold text-primary">{percentage}%</span>
+                </div>
+                <p className="text-muted-foreground text-sm">Score</p>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Attempted</span>
-                <span className="font-semibold">{attemptedCount}</span>
+              <div className="text-center">
+                <div className={`w-28 h-28 rounded-full flex items-center justify-center mb-2 ${
+                  percentage >= 70 ? 'bg-success/10 border-4 border-success' : 
+                  percentage >= 50 ? 'bg-warning/10 border-4 border-warning' : 
+                  'bg-destructive/10 border-4 border-destructive'
+                }`}>
+                  <span className={`text-4xl font-bold ${
+                    percentage >= 70 ? 'text-success' : 
+                    percentage >= 50 ? 'text-warning' : 
+                    'text-destructive'
+                  }`}>{grade}</span>
+                </div>
+                <p className="text-muted-foreground text-sm">Grade</p>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Accuracy</span>
+            </div>
+
+            {/* Stats Grid */}
+            <div className="grid grid-cols-4 gap-4 mb-6">
+              <div className="bg-success/10 border border-success/30 rounded-lg p-4 text-center">
+                <p className="text-3xl font-bold text-success">{correctCount}</p>
+                <p className="text-sm text-success/80">Correct</p>
+              </div>
+              <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4 text-center">
+                <p className="text-3xl font-bold text-destructive">{wrongCount}</p>
+                <p className="text-sm text-destructive/80">Wrong</p>
+              </div>
+              <div className="bg-warning/10 border border-warning/30 rounded-lg p-4 text-center">
+                <p className="text-3xl font-bold text-warning">{skippedCount}</p>
+                <p className="text-sm text-warning/80">Skipped</p>
+              </div>
+              <div className="bg-muted border border-border rounded-lg p-4 text-center">
+                <p className="text-3xl font-bold text-muted-foreground">{mcqs.length}</p>
+                <p className="text-sm text-muted-foreground">Total</p>
+              </div>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="mb-6">
+              <div className="flex justify-between text-sm mb-2">
+                <span className="text-muted-foreground">Accuracy</span>
                 <span className="font-semibold">{attemptedCount > 0 ? Math.round((correctCount / attemptedCount) * 100) : 0}%</span>
               </div>
+              <div className="w-full bg-muted rounded-full h-3 overflow-hidden">
+                <div 
+                  className="h-full rounded-full bg-primary transition-all duration-500"
+                  style={{ width: `${percentage}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-4">
+              <button
+                onClick={restartQuiz}
+                className="flex-1 flex items-center justify-center gap-2 py-3 bg-primary text-primary-foreground font-semibold rounded-lg hover:bg-primary/90 transition-colors"
+              >
+                <RotateCcw className="w-4 h-4" />
+                Retry Quiz
+              </button>
+              <button
+                onClick={() => navigate('/')}
+                className="flex-1 flex items-center justify-center gap-2 py-3 bg-secondary text-secondary-foreground font-semibold rounded-lg hover:bg-secondary/80 transition-colors"
+              >
+                <Home className="w-4 h-4" />
+                New Quiz
+              </button>
             </div>
           </div>
 
-          <div className="flex gap-4">
-            <button
-              onClick={restartQuiz}
-              className="flex-1 py-3 px-6 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-bold rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all shadow-lg"
-            >
-              🔄 Retry Quiz
-            </button>
-            <button
-              onClick={() => navigate('/')}
-              className="flex-1 py-3 px-6 bg-gray-200 text-gray-700 font-bold rounded-lg hover:bg-gray-300 transition-all"
-            >
-              📚 New PDF
-            </button>
+          {/* Question Review */}
+          <div className="bg-card rounded-lg shadow-sm border border-border p-6">
+            <h3 className="font-semibold text-lg mb-4 flex items-center gap-2">
+              <BookOpen className="w-5 h-5" />
+              Question Review
+            </h3>
+            <div className="grid grid-cols-10 gap-2">
+              {mcqs.map((q, idx) => {
+                const status = getQuestionStatus(q);
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => {
+                      setQuizCompleted(false);
+                      goToQuestion(idx);
+                    }}
+                    className={`w-10 h-10 rounded-lg text-sm font-semibold transition-colors ${
+                      status === 'correct' ? 'bg-success text-success-foreground' :
+                      status === 'wrong' ? 'bg-destructive text-destructive-foreground' :
+                      status === 'skipped' ? 'bg-warning text-warning-foreground' :
+                      'bg-muted text-muted-foreground'
+                    }`}
+                  >
+                    {idx + 1}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>
@@ -156,122 +238,248 @@ const Quiz = () => {
 
   // Quiz Question Screen
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-900 via-indigo-900 to-purple-900 p-4">
-      <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-2xl p-8 my-8">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-6">
+    <div className="min-h-screen bg-muted flex flex-col">
+      {/* Header */}
+      <div className="bg-primary text-primary-foreground py-3 px-4 shadow-md">
+        <div className="flex items-center justify-between">
           <button
             onClick={() => navigate('/')}
-            className="text-gray-500 hover:text-gray-700 transition-colors"
+            className="flex items-center gap-1 text-sm hover:text-primary-foreground/80 transition-colors"
           >
-            ← Back
+            <ChevronLeft className="w-4 h-4" />
+            Exit
           </button>
-          <div className="text-center">
-            <span className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-4 py-1 rounded-full text-sm font-bold">
-              {currentIndex + 1} / {mcqs.length}
-            </span>
+          <h1 className="text-lg font-bold">Practice Quiz</h1>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1 text-sm bg-primary-foreground/10 px-3 py-1 rounded-full">
+              <Clock className="w-4 h-4" />
+              <span className="font-mono">{formatTime(elapsedTime)}</span>
+            </div>
+            <button
+              onClick={() => setShowPalette(!showPalette)}
+              className="text-sm bg-primary-foreground/10 px-3 py-1 rounded-full hover:bg-primary-foreground/20 transition-colors"
+            >
+              {showPalette ? 'Hide' : 'Show'} Panel
+            </button>
           </div>
-          <div className="text-sm">
-            <span className="text-green-600 font-bold">{correctCount}✓</span>
-            <span className="mx-1 text-gray-400">|</span>
-            <span className="text-red-600 font-bold">{wrongCount}✗</span>
+        </div>
+      </div>
+
+      {/* Stats Bar */}
+      <div className="bg-card border-b border-border px-4 py-2">
+        <div className="flex items-center justify-center gap-6 text-sm">
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded-full bg-success"></div>
+            <span className="text-muted-foreground">Correct: <span className="font-semibold text-success">{correctCount}</span></span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded-full bg-destructive"></div>
+            <span className="text-muted-foreground">Wrong: <span className="font-semibold text-destructive">{wrongCount}</span></span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded-full bg-warning"></div>
+            <span className="text-muted-foreground">Skipped: <span className="font-semibold text-warning">{skippedCount}</span></span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded-full bg-muted-foreground/30"></div>
+            <span className="text-muted-foreground">Remaining: <span className="font-semibold">{notVisitedCount}</span></span>
           </div>
         </div>
+      </div>
 
-        {/* Progress Bar */}
-        <div className="w-full bg-gray-200 rounded-full h-2 mb-8">
-          <div 
-            className="bg-gradient-to-r from-blue-500 to-purple-600 h-full rounded-full transition-all duration-300"
-            style={{ width: `${((currentIndex + 1) / mcqs.length) * 100}%` }}
-          />
-        </div>
-
-        {/* Question */}
-        <div className="mb-6">
-          <h2 className="text-xl font-bold text-gray-800 leading-relaxed">
-            Q{currentIndex + 1}. {currentMCQ.question}
-          </h2>
-        </div>
-
-        {/* Options */}
-        <div className="space-y-3 mb-6">
-          {currentMCQ.options.map((option, idx) => {
-            const letter = String.fromCharCode(97 + idx);
-            const isSelected = currentMCQ.selected === letter;
-            const isCorrect = currentMCQ.correct === letter;
-            
-            let className = "p-4 border-2 rounded-xl cursor-pointer transition-all duration-200 ";
-            
-            if (!showResult) {
-              className += "border-gray-300 hover:border-blue-500 hover:bg-blue-50 hover:shadow-md";
-            } else {
-              if (isCorrect) {
-                className += "border-green-500 bg-green-50 shadow-md";
-              } else if (isSelected && !isCorrect) {
-                className += "border-red-500 bg-red-50 shadow-md";
-              } else {
-                className += "border-gray-200 opacity-60";
-              }
-            }
-            
-            return (
-              <div 
-                key={idx}
-                className={className}
-                onClick={() => selectAnswer(letter)}
-              >
-                <span className="font-medium">{option}</span>
-                {showResult && isCorrect && <span className="ml-2 text-green-600 font-bold">✓ Correct</span>}
-                {showResult && isSelected && !isCorrect && <span className="ml-2 text-red-600 font-bold">✗ Wrong</span>}
+      <div className="flex-1 flex">
+        {/* Main Question Area */}
+        <div className="flex-1 p-6 overflow-y-auto">
+          <div className="max-w-3xl mx-auto">
+            {/* Question Card */}
+            <div className="bg-card rounded-lg shadow-sm border border-border mb-6">
+              {/* Question Header */}
+              <div className="border-b border-border px-6 py-3 flex items-center justify-between bg-muted/50">
+                <span className="text-sm font-semibold text-primary">Question {currentIndex + 1} of {mcqs.length}</span>
+                <div className="w-32 bg-muted rounded-full h-2 overflow-hidden">
+                  <div 
+                    className="h-full bg-primary transition-all duration-300"
+                    style={{ width: `${((currentIndex + 1) / mcqs.length) * 100}%` }}
+                  />
+                </div>
               </div>
-            );
-          })}
+
+              {/* Question Text */}
+              <div className="px-6 py-5">
+                <p className="text-lg text-foreground leading-relaxed">
+                  {currentMCQ.question}
+                </p>
+              </div>
+
+              {/* Options */}
+              <div className="px-6 pb-6 space-y-3">
+                {currentMCQ.options.map((option, idx) => {
+                  const letter = String.fromCharCode(97 + idx);
+                  const displayLetter = letter.toUpperCase();
+                  const isSelected = currentMCQ.selected === letter;
+                  const isCorrect = currentMCQ.correct === letter;
+                  
+                  let containerClass = "flex items-start gap-3 p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ";
+                  let circleClass = "w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold flex-shrink-0 transition-all ";
+                  
+                  if (!showResult) {
+                    containerClass += "border-border hover:border-primary hover:bg-primary/5";
+                    circleClass += "bg-muted text-muted-foreground";
+                  } else {
+                    if (isCorrect) {
+                      containerClass += "border-success bg-success/5";
+                      circleClass += "bg-success text-success-foreground";
+                    } else if (isSelected && !isCorrect) {
+                      containerClass += "border-destructive bg-destructive/5";
+                      circleClass += "bg-destructive text-destructive-foreground";
+                    } else {
+                      containerClass += "border-border/50 opacity-50";
+                      circleClass += "bg-muted text-muted-foreground";
+                    }
+                  }
+                  
+                  return (
+                    <div 
+                      key={idx}
+                      className={containerClass}
+                      onClick={() => selectAnswer(letter)}
+                    >
+                      <div className={circleClass}>
+                        {showResult && isCorrect ? <CheckCircle2 className="w-5 h-5" /> :
+                         showResult && isSelected && !isCorrect ? <XCircle className="w-5 h-5" /> :
+                         displayLetter}
+                      </div>
+                      <span className="flex-1 text-foreground pt-1">{option.replace(/^[a-d]\)\s*/i, '')}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Explanation */}
+            {showResult && (
+              <div className="bg-card rounded-lg shadow-sm border border-border overflow-hidden mb-6">
+                <div className="bg-primary/10 px-6 py-3 border-b border-border">
+                  <span className="font-semibold text-primary flex items-center gap-2">
+                    <BookOpen className="w-4 h-4" />
+                    Explanation
+                  </span>
+                </div>
+                <div className="px-6 py-4">
+                  <p className="text-foreground leading-relaxed">{currentMCQ.explanation || 'No explanation available.'}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Navigation */}
+            <div className="flex gap-4">
+              <button
+                onClick={prevQuestion}
+                disabled={currentIndex === 0}
+                className={`flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-semibold transition-colors ${
+                  currentIndex === 0 
+                    ? 'bg-muted text-muted-foreground cursor-not-allowed' 
+                    : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                }`}
+              >
+                <ChevronLeft className="w-4 h-4" />
+                Previous
+              </button>
+              
+              <div className="flex-1" />
+              
+              {!showResult && (
+                <button
+                  onClick={() => {
+                    setMcqs(prev => prev.map((q, idx) => 
+                      idx === currentIndex && q.selected === null ? { ...q, selected: '' } : q
+                    ));
+                    setShowResult(true);
+                  }}
+                  className="px-6 py-3 rounded-lg font-semibold bg-warning/10 text-warning border border-warning/30 hover:bg-warning/20 transition-colors"
+                >
+                  Skip
+                </button>
+              )}
+              
+              <button
+                onClick={nextQuestion}
+                disabled={!showResult}
+                className={`flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-semibold transition-colors ${
+                  !showResult 
+                    ? 'bg-muted text-muted-foreground cursor-not-allowed' 
+                    : 'bg-primary text-primary-foreground hover:bg-primary/90'
+                }`}
+              >
+                {currentIndex === mcqs.length - 1 ? 'Submit Quiz' : 'Next'}
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
         </div>
 
-        {/* Explanation */}
-        {showResult && (
-          <div className="bg-gradient-to-r from-amber-50 to-yellow-50 border-l-4 border-amber-400 p-5 rounded-xl mb-6 shadow-inner">
-            <p className="font-bold text-amber-800 mb-2">💡 Explanation:</p>
-            <p className="text-amber-900 leading-relaxed">{currentMCQ.explanation || 'No explanation available.'}</p>
+        {/* Question Palette Sidebar */}
+        {showPalette && (
+          <div className="w-72 bg-card border-l border-border p-4 overflow-y-auto hidden lg:block">
+            <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide mb-4">Question Palette</h3>
+            
+            {/* Legend */}
+            <div className="grid grid-cols-2 gap-2 mb-4 text-xs">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded bg-success flex items-center justify-center text-success-foreground text-xs">1</div>
+                <span className="text-muted-foreground">Correct</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded bg-destructive flex items-center justify-center text-destructive-foreground text-xs">1</div>
+                <span className="text-muted-foreground">Wrong</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded bg-warning flex items-center justify-center text-warning-foreground text-xs">1</div>
+                <span className="text-muted-foreground">Skipped</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded bg-muted flex items-center justify-center text-muted-foreground text-xs">1</div>
+                <span className="text-muted-foreground">Not visited</span>
+              </div>
+            </div>
+
+            <div className="border-t border-border pt-4">
+              <div className="grid grid-cols-5 gap-2">
+                {mcqs.map((q, idx) => {
+                  const status = getQuestionStatus(q);
+                  const isCurrent = idx === currentIndex;
+                  
+                  return (
+                    <button
+                      key={idx}
+                      onClick={() => goToQuestion(idx)}
+                      className={`w-10 h-10 rounded text-sm font-semibold transition-all ${
+                        isCurrent ? 'ring-2 ring-primary ring-offset-2' : ''
+                      } ${
+                        status === 'correct' ? 'bg-success text-success-foreground' :
+                        status === 'wrong' ? 'bg-destructive text-destructive-foreground' :
+                        status === 'skipped' ? 'bg-warning text-warning-foreground' :
+                        'bg-muted text-muted-foreground hover:bg-muted/80'
+                      }`}
+                    >
+                      {idx + 1}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Submit Button */}
+            <div className="mt-6 pt-4 border-t border-border">
+              <button
+                onClick={() => setQuizCompleted(true)}
+                className="w-full py-3 bg-primary text-primary-foreground font-semibold rounded-lg hover:bg-primary/90 transition-colors"
+              >
+                Submit Quiz
+              </button>
+            </div>
           </div>
         )}
-
-        {/* Navigation */}
-        <div className="flex gap-4">
-          <button
-            onClick={prevQuestion}
-            disabled={currentIndex === 0}
-            className={`flex-1 py-3 px-6 font-bold rounded-lg transition-all ${
-              currentIndex === 0 
-                ? 'bg-gray-200 text-gray-400 cursor-not-allowed' 
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
-          >
-            ← Previous
-          </button>
-          
-          {showResult ? (
-            <button
-              onClick={nextQuestion}
-              className="flex-1 py-3 px-6 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-bold rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all shadow-lg"
-            >
-              {currentIndex === mcqs.length - 1 ? '🏁 Finish Quiz' : 'Next →'}
-            </button>
-          ) : (
-            <button
-              onClick={() => {
-                // Skip without answering
-                setMcqs(prev => prev.map((q, idx) => 
-                  idx === currentIndex && q.selected === null ? { ...q, selected: '' } : q
-                ));
-                setShowResult(true);
-              }}
-              className="flex-1 py-3 px-6 bg-gray-100 text-gray-600 font-bold rounded-lg hover:bg-gray-200 transition-all border-2 border-gray-200"
-            >
-              Skip →
-            </button>
-          )}
-        </div>
       </div>
     </div>
   );
