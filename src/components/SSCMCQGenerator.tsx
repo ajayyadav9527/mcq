@@ -256,28 +256,51 @@ const SSCMCQGenerator = () => {
   const generateMCQsBatch = async (content: string, numQuestions: number, batchNum: number, totalBatches: number, retries = 2): Promise<MCQ[]> => {
     const apiKey = getNextApiKey();
     
-    const prompt = `You are an expert ${exam} exam teacher. Generate EXACTLY ${numQuestions} high-quality MCQs.
+    const prompt = `You are India's TOP ${exam} exam coach with 20+ years experience. Your task: Create EXACTLY ${numQuestions} PERFECT MCQs that cover ALL concepts from this content.
 
-FORMAT (follow strictly):
-Q1. [Clear, exam-style question]
-a) [Option A]
-b) [Option B]
-c) [Option C]
-d) [Option D]
-Correct Answer: [single letter a/b/c/d]
-Explanation: [5-6 sentences in simple language: (1) Why correct answer is right with key fact, (2) Simple analogy or example to understand concept, (3) Why other options are wrong briefly, (4) Memory tip or trick to remember, (5) SSC exam relevance if any]
+📋 STRICT OUTPUT FORMAT (follow EXACTLY):
+Q1. [Direct, clear question testing a specific fact/concept]
+a) [Option - plausible but wrong OR correct]
+b) [Option - plausible but wrong OR correct]
+c) [Option - plausible but wrong OR correct]
+d) [Option - plausible but wrong OR correct]
+Correct Answer: [single letter: a, b, c, or d]
+Explanation: [Professional 6-8 sentence explanation - see format below]
 
-RULES:
-- Questions must be accurate and error-free
-- Use simple 10th-grade friendly language in explanations
-- Include analogies to make concepts easy to understand
-- Cover important facts, dates, names, concepts from content
-- Each question must have exactly 4 options with ONE correct answer
+📝 EXPLANATION STRUCTURE (MANDATORY - follow this order):
+1. ANSWER: Start with "The correct answer is [option letter]) [answer text]."
+2. WHY CORRECT: Explain the core concept/fact in 1-2 simple sentences. Use everyday analogies if helpful.
+3. KEY FACTS: Include specific dates, numbers, names, articles, or data that students must remember.
+4. CONTEXT: Brief background - why this topic matters, historical significance, or real-world application.
+5. WRONG OPTIONS: Briefly explain why each wrong option is incorrect (1 line each).
+6. MEMORY TIP: Give a trick, mnemonic, or association to remember this fact easily.
+7. EXAM TIP: If relevant, mention how often this appears in SSC exams or related questions.
 
-CONTENT:
-${content.substring(0, 60000)}
+🎯 CONTENT COVERAGE RULES:
+- Extract EVERY important fact, date, name, article, scheme, place from the content
+- Create questions on ALL topics/sections present - don't skip any part
+- Include questions on: definitions, dates, names, places, numbers, comparisons, processes
+- Prioritize facts that are commonly asked in ${exam} exams (2020-2024 trends)
+- Each question must test a DIFFERENT concept - no repetition
 
-Generate ${numQuestions} MCQs now:`;
+✅ QUALITY STANDARDS:
+- 100% factually accurate - verify before including
+- Questions must be clear, unambiguous, exam-style
+- All 4 options must be plausible (avoid obviously wrong options)
+- Only ONE correct answer per question
+- Use simple English that a Class 10 student can understand
+- Explanations should teach the concept, not just state the answer
+
+❌ AVOID:
+- Vague questions like "Which of the following is true?"
+- Options that are too similar or confusing
+- Incomplete or unclear explanations
+- Missing any section of the provided content
+
+CONTENT TO COVER (extract MCQs from ALL parts):
+${content.substring(0, 70000)}
+
+Generate EXACTLY ${numQuestions} high-quality MCQs covering ALL concepts from above content:`;
 
     try {
       const response = await fetch(getGeminiUrl(apiKey), {
@@ -286,8 +309,8 @@ Generate ${numQuestions} MCQs now:`;
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
-            maxOutputTokens: 16000,
-            temperature: 0.5
+            maxOutputTokens: 20000,
+            temperature: 0.4
           }
         })
       });
