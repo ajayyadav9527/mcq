@@ -351,20 +351,33 @@ const SSCMCQGenerator = () => {
     const currentYear = new Date().getFullYear();
     const pastYear = currentYear - 1;
     
-    const prompt = `Create EXACTLY ${numQuestions} SSC ${exam} MCQs from this content. Current focus: ${pastYear}-${currentYear} trends.
+    const prompt = `Create EXACTLY ${numQuestions} SSC ${exam} MCQs from this content. Focus: ${pastYear}-${currentYear} exam trends.
 
-FORMAT (strict):
-Q1. [Question]
-a) [Option] b) [Option] c) [Option] d) [Option]
+OUTPUT FORMAT (follow exactly):
+Q1. [Clear, direct question testing one specific fact]
+a) [Option]
+b) [Option]
+c) [Option]
+d) [Option]
 Correct Answer: [a/b/c/d]
-Explanation: [3-4 sentences: correct answer, key fact, why others wrong, memory tip]
+Explanation: [Professional 5-6 sentence explanation following this structure:
+- Start with "The correct answer is [letter]) [answer]."
+- State the key fact/concept clearly with relevant dates, numbers, or names.
+- Provide brief context on why this matters or its significance.
+- Explain why each wrong option is incorrect (one line each).
+- End with a memory tip or mnemonic to remember this fact.]
 
-RULES: Each Q tests different concept. SSC exam style. Simple English. 4 plausible options.
+RULES:
+- Each question must test a DIFFERENT concept
+- SSC exam style: direct fact-based questions
+- Simple English (Class 10 level)
+- All 4 options must be plausible
+- Cover ALL topics from content proportionally
 
 CONTENT:
 ${content.substring(0, 50000)}
 
-Generate ${numQuestions} MCQs:`;
+Generate ${numQuestions} unique MCQs:`;
 
     try {
       const response = await fetch(getGeminiUrl(apiKey), {
