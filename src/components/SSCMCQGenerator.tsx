@@ -58,7 +58,7 @@ const getNextApiKey = () => {
 };
 
 const getGeminiUrl = (key: string) => 
-  `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
+  `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${key}`;
 
 const SSCMCQGenerator = () => {
   const navigate = useNavigate();
@@ -253,33 +253,17 @@ const SSCMCQGenerator = () => {
     return allContent.join('\n');
   };
 
-  const generateMCQsBatch = async (content: string, numQuestions: number, batchNum: number, totalBatches: number, retries = 2): Promise<MCQ[]> => {
+  const generateMCQsBatch = async (content: string, numQuestions: number, batchNum: number, totalBatches: number, retries = 1): Promise<MCQ[]> => {
     const apiKey = getNextApiKey();
     
-    const prompt = `Expert ${exam} teacher. Generate EXACTLY ${numQuestions} MCQs. Batch ${batchNum}/${totalBatches}.
-
-PRIORITY: Recent SSC trends (2020-2024), high-weightage topics, important facts/dates/names.
-
-FORMAT (strict):
-Q1. [Question]
-a) [Option]
-b) [Option]
-c) [Option]
-d) [Option]
-Correct Answer: a
-Explanation: [6-8 sentences: correct answer, concept explanation, why others wrong, memory tip, SSC trend note]
-
-RULES:
-- EXACTLY ${numQuestions} MCQs, no more/less
-- Frame like real ${exam} papers
-- Cover ALL exam-relevant content
-- Correct Answer: single letter (a/b/c/d)
-${batchNum > 1 ? '- Different questions from previous batches' : ''}
+    const prompt = `Generate ${numQuestions} ${exam} MCQs from this content. Format each as:
+Q1. Question
+a) b) c) d) options
+Correct Answer: letter
+Explanation: Brief why correct + tip
 
 CONTENT:
-${content}
-
-Generate ${numQuestions} MCQs now:`;
+${content.substring(0, 50000)}`;
 
     try {
       const response = await fetch(getGeminiUrl(apiKey), {
@@ -288,36 +272,22 @@ Generate ${numQuestions} MCQs now:`;
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
-            maxOutputTokens: 20000,
-            temperature: 0.7
+            maxOutputTokens: 12000,
+            temperature: 0.4
           }
         })
       });
       
       if (!response.ok) {
-        if (retries > 0) {
-          await new Promise(r => setTimeout(r, 500));
-          return generateMCQsBatch(content, numQuestions, batchNum, totalBatches, retries - 1);
-        }
-        throw new Error(`Batch ${batchNum} failed`);
+        if (retries > 0) return generateMCQsBatch(content, numQuestions, batchNum, totalBatches, 0);
+        return [];
       }
       
       const data = await response.json();
       const mcqText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      const mcqs = parseMCQs(mcqText);
-      
-      // If we got significantly fewer MCQs than requested and have retries, try again
-      if (mcqs.length < numQuestions * 0.7 && retries > 0) {
-        return generateMCQsBatch(content, numQuestions, batchNum, totalBatches, retries - 1);
-      }
-      
-      return mcqs;
+      return parseMCQs(mcqText);
     } catch (err) {
-      if (retries > 0) {
-        await new Promise(r => setTimeout(r, 500));
-        return generateMCQsBatch(content, numQuestions, batchNum, totalBatches, retries - 1);
-      }
-      console.error(`Batch ${batchNum} error:`, err);
+      if (retries > 0) return generateMCQsBatch(content, numQuestions, batchNum, totalBatches, 0);
       return [];
     }
   };
@@ -352,8 +322,8 @@ Generate ${numQuestions} MCQs now:`;
     const numChunks = contentChunks.length;
     const questionsPerChunk = Math.ceil(numQuestions / numChunks);
     
-    // Create batches - larger batch size for efficiency
-    const BATCH_SIZE = 50; // Increased from 40
+    // Create batches - very large batch size for maximum speed
+    const BATCH_SIZE = 100;
     const batches: { content: string; questions: number; batchNum: number; chunkNum: number }[] = [];
     let batchNum = 1;
     
