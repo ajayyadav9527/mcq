@@ -253,108 +253,73 @@ const SSCMCQGenerator = () => {
     return allContent.join('\n');
   };
 
-  const generateMCQsBatch = async (content: string, numQuestions: number, batchNum: number, totalBatches: number): Promise<MCQ[]> => {
+  const generateMCQsBatch = async (content: string, numQuestions: number, batchNum: number, totalBatches: number, retries = 2): Promise<MCQ[]> => {
     const apiKey = getNextApiKey();
     
-    const response = await fetch(getGeminiUrl(apiKey), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{
-          parts: [{
-            text: `You are an expert ${exam} exam teacher with deep knowledge of RECENT SSC EXAM TRENDS and FREQUENTLY ASKED TOPICS. Generate EXACTLY ${numQuestions} high-quality MCQs from the provided content. This is batch ${batchNum} of ${totalBatches}.
+    const prompt = `Expert ${exam} teacher. Generate EXACTLY ${numQuestions} MCQs. Batch ${batchNum}/${totalBatches}.
 
-🎯 CRITICAL - SSC EXAM TREND FOCUS:
-You MUST prioritize creating MCQs on topics that are:
-1. FREQUENTLY ASKED in recent ${exam} exams (2020-2024)
-2. HIGH-WEIGHTAGE concepts that appear repeatedly across SSC papers
-3. TRENDING TOPICS that SSC has been focusing on recently
-4. IMPORTANT FACTS, DATES, NAMES that are SSC favorites
-5. CONCEPTS that students commonly get wrong in exams
+PRIORITY: Recent SSC trends (2020-2024), high-weightage topics, important facts/dates/names.
 
-⚠️ NEVER SKIP important concepts from the content - if a concept is exam-relevant, CREATE AN MCQ on it!
-
-COMMON SSC EXAM PATTERNS TO FOCUS ON:
-- First/Largest/Smallest/Longest facts
-- Important dates, years, and anniversaries
-- Authors and their famous works
-- Headquarters locations
-- Constitutional articles and amendments
-- Scientific discoveries and inventors
-- Rivers, mountains, boundaries
-- Awards, honors, and recipients
-- Government schemes and their launch years
-- International organizations and India's role
-- Recent current affairs mixed with static GK
-
-FORMAT (strict - follow exactly):
-Q1. [Question - frame like actual SSC exam questions]
+FORMAT (strict):
+Q1. [Question]
 a) [Option]
 b) [Option]
 c) [Option]
 d) [Option]
 Correct Answer: a
-Explanation: [CRYSTAL CLEAR explanation - see requirements below]
+Explanation: [6-8 sentences: correct answer, concept explanation, why others wrong, memory tip, SSC trend note]
 
-EXPLANATION REQUIREMENTS - WRITE LIKE A FRIENDLY TEACHER:
-Each explanation MUST be 6-10 sentences, written in SIMPLE language a 10th-grade student can understand:
+RULES:
+- EXACTLY ${numQuestions} MCQs, no more/less
+- Frame like real ${exam} papers
+- Cover ALL exam-relevant content
+- Correct Answer: single letter (a/b/c/d)
+${batchNum > 1 ? '- Different questions from previous batches' : ''}
 
-✅ START: "The correct answer is [option letter]) [option text]."
-
-✅ EXPLAIN THE CONCEPT SIMPLY:
-- Explain the concept in everyday language, avoiding jargon
-- Use analogies or real-world examples when possible
-- Break down complex ideas into simple parts
-
-✅ KEY FACTS TO REMEMBER:
-- Mention important dates, names, numbers, or facts
-- Highlight what makes this answer unique or special
-- Add related facts that might appear in exams
-
-✅ WHY OTHER OPTIONS ARE WRONG:
-- For EACH wrong option, explain in 1 sentence why it's incorrect
-- Example: "Option a) is wrong because..."
-
-✅ MEMORY TIP:
-- Give an easy trick, mnemonic, or association to remember this
-- Example: "Easy way to remember: Think of..."
-
-✅ SSC EXAM TIP:
-- "🔥 SSC TREND: This topic has appeared in [X] recent exams"
-- Mention related questions that might be asked
-- Alert about tricky variations SSC uses
-
-EXAMPLE OF PERFECT EXPLANATION:
-"The correct answer is b) 1950. The Indian Constitution came into effect on January 26, 1950 - this is why we celebrate Republic Day on this date every year. Think of it simply: Independence Day (August 15, 1947) = freedom from British rule, but Republic Day (January 26, 1950) = India became a democratic republic with its own Constitution. Dr. B.R. Ambedkar led the team that wrote it. Option a) 1947 is wrong - that's when we got independence, not the Constitution. Option c) 1952 is wrong - that's when the first elections happened. Option d) 1949 is wrong - the Constitution was completed on November 26, 1949, but it started working from January 26, 1950. Easy memory trick: '26-26' - November 26 completed, January 26 started! 🔥 SSC TREND: This is one of the MOST frequently asked questions - SSC often asks about Constitution dates, Preamble keywords, and Fundamental Rights."
-
-OTHER REQUIREMENTS:
-- YOU MUST GENERATE EXACTLY ${numQuestions} MCQs - no more, no less
-- Frame questions EXACTLY like real ${exam} papers
-- Include tricky distractors that SSC typically uses
-- Correct Answer MUST be only a single letter: a, b, c, or d
-- Cover ALL important topics from the content - don't miss any exam-relevant concept
-- All 4 options must be distinct and believable
-- Test understanding AND factual recall (SSC tests both)
-${batchNum > 1 ? `- Generate DIFFERENT questions from previous batches - cover different parts of the content` : ''}
-
-CONTENT TO ANALYZE (extract ALL exam-relevant facts):
+CONTENT:
 ${content}
 
-Generate EXACTLY ${numQuestions} MCQs now, focusing on SSC EXAM TRENDS with CLEAR, STUDENT-FRIENDLY explanations:`
-          }]
-        }],
-        generationConfig: {
-          maxOutputTokens: 24000,
-          temperature: 0.8
+Generate ${numQuestions} MCQs now:`;
+
+    try {
+      const response = await fetch(getGeminiUrl(apiKey), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            maxOutputTokens: 20000,
+            temperature: 0.7
+          }
+        })
+      });
+      
+      if (!response.ok) {
+        if (retries > 0) {
+          await new Promise(r => setTimeout(r, 500));
+          return generateMCQsBatch(content, numQuestions, batchNum, totalBatches, retries - 1);
         }
-      })
-    });
-    
-    if (!response.ok) throw new Error(`MCQ generation failed for batch ${batchNum}`);
-    
-    const data = await response.json();
-    const mcqText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    return parseMCQs(mcqText);
+        throw new Error(`Batch ${batchNum} failed`);
+      }
+      
+      const data = await response.json();
+      const mcqText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const mcqs = parseMCQs(mcqText);
+      
+      // If we got significantly fewer MCQs than requested and have retries, try again
+      if (mcqs.length < numQuestions * 0.7 && retries > 0) {
+        return generateMCQsBatch(content, numQuestions, batchNum, totalBatches, retries - 1);
+      }
+      
+      return mcqs;
+    } catch (err) {
+      if (retries > 0) {
+        await new Promise(r => setTimeout(r, 500));
+        return generateMCQsBatch(content, numQuestions, batchNum, totalBatches, retries - 1);
+      }
+      console.error(`Batch ${batchNum} error:`, err);
+      return [];
+    }
   };
 
   const generateMCQs = async (content: string, numQuestions: number): Promise<MCQ[]> => {
@@ -387,20 +352,19 @@ Generate EXACTLY ${numQuestions} MCQs now, focusing on SSC EXAM TRENDS with CLEA
     const numChunks = contentChunks.length;
     const questionsPerChunk = Math.ceil(numQuestions / numChunks);
     
-    // Create batches - each batch gets a different chunk of content
-    const BATCH_SIZE = 40;
+    // Create batches - larger batch size for efficiency
+    const BATCH_SIZE = 50; // Increased from 40
     const batches: { content: string; questions: number; batchNum: number; chunkNum: number }[] = [];
     let batchNum = 1;
     
     for (let chunkIdx = 0; chunkIdx < numChunks; chunkIdx++) {
       const chunkContent = contentChunks[chunkIdx];
       let questionsForThisChunk = chunkIdx === numChunks - 1 
-        ? numQuestions - (questionsPerChunk * (numChunks - 1))  // Last chunk gets remaining
+        ? numQuestions - (questionsPerChunk * (numChunks - 1))
         : questionsPerChunk;
       
       questionsForThisChunk = Math.max(1, questionsForThisChunk);
       
-      // Split chunk questions into sub-batches of 40 max
       let remaining = questionsForThisChunk;
       while (remaining > 0) {
         const questionsInBatch = Math.min(BATCH_SIZE, remaining);
@@ -414,20 +378,13 @@ Generate EXACTLY ${numQuestions} MCQs now, focusing on SSC EXAM TRENDS with CLEA
       }
     }
     
-    setStatus(`Generating ${numQuestions} MCQs from ${numChunks} content sections (${batches.length} batches)...`);
+    setStatus(`⚡ Generating ${numQuestions} MCQs (${batches.length} batches, 10 parallel)...`);
     
-    // Run all batches in parallel using different API keys with higher concurrency
-    const PARALLEL_BATCHES = Math.min(10, batches.length); // Up to 10 parallel API calls
-    const results: MCQ[][] = [];
-    
-    for (let i = 0; i < batches.length; i += PARALLEL_BATCHES) {
-      const batchSlice = batches.slice(i, i + PARALLEL_BATCHES);
-      const batchPromises = batchSlice.map(batch => 
-        generateMCQsBatch(batch.content, batch.questions, batch.batchNum, batches.length)
-      );
-      const sliceResults = await Promise.all(batchPromises);
-      results.push(...sliceResults);
-    }
+    // Run ALL batches in parallel using all 10 API keys simultaneously
+    const batchPromises = batches.map(batch => 
+      generateMCQsBatch(batch.content, batch.questions, batch.batchNum, batches.length)
+    );
+    const results = await Promise.all(batchPromises);
     
     // Combine all MCQs from all batches
     const allMcqs = results.flat();
