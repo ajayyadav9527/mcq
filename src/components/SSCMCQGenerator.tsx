@@ -575,10 +575,13 @@ Generate EXACTLY ${numQuestions} MCQs now, focusing on SSC EXAM TRENDS with CLEA
             <div className="relative">
               <input
                 type="number" 
-                value={count}
+                value={count || ''}
                 onChange={(e) => {
-                  const val = parseInt(e.target.value);
-                  if (!isNaN(val)) setCount(Math.min(500, Math.max(1, val)));
+                  const val = e.target.value === '' ? 0 : parseInt(e.target.value);
+                  if (!isNaN(val)) setCount(Math.min(500, val));
+                }}
+                onBlur={() => {
+                  if (count < 1) setCount(1);
                 }}
                 min="1"
                 max="500"
