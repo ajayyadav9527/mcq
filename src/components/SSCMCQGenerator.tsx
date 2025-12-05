@@ -389,66 +389,96 @@ Generate EXACTLY ${numQuestions} high-quality MCQs covering ALL concepts from ab
   };
 
   const generateMCQs = async (content: string, numQuestions: number): Promise<MCQ[]> => {
-    // Split content into chunks to ensure FULL PDF coverage
-    const MAX_CHUNK_SIZE = 80000; // chars per chunk for better API handling
-    const contentChunks: string[] = [];
+    // Split content by PAGES to ensure EVERY page is covered
+    const pages = content.split(/(?=--- Page \d+ ---)/).filter(p => p.trim().length > 50);
+    const totalPages = pages.length;
     
-    // Split by page markers to keep content coherent
-    const pages = content.split(/(?=--- Page \d+ ---)/);
+    if (totalPages === 0) {
+      // Fallback: split by character count if no page markers
+      const MAX_CHUNK_SIZE = 60000;
+      for (let i = 0; i < content.length; i += MAX_CHUNK_SIZE) {
+        pages.push(content.substring(i, i + MAX_CHUNK_SIZE));
+      }
+    }
+    
+    // Calculate content weight for each page (more content = more MCQs)
+    const pageWeights: number[] = pages.map(page => {
+      const charCount = page.length;
+      const factCount = (page.match(/\b\d+\b/g) || []).length + 
+                       (page.match(/\b[A-Z][a-z]+/g) || []).length;
+      return charCount + (factCount * 50); // Boost pages with more facts
+    });
+    
+    const totalWeight = pageWeights.reduce((a, b) => a + b, 0);
+    
+    // Distribute MCQs proportionally across ALL pages
+    // Minimum 1 MCQ per page to ensure complete coverage
+    let mcqDistribution: number[] = pages.map((_, idx) => {
+      const proportion = pageWeights[idx] / totalWeight;
+      return Math.max(1, Math.round(numQuestions * proportion));
+    });
+    
+    // Adjust to match exact total
+    let currentTotal = mcqDistribution.reduce((a, b) => a + b, 0);
+    while (currentTotal !== numQuestions) {
+      if (currentTotal < numQuestions) {
+        // Add to heaviest pages
+        const maxIdx = pageWeights.indexOf(Math.max(...pageWeights));
+        mcqDistribution[maxIdx]++;
+        currentTotal++;
+      } else {
+        // Remove from pages with most MCQs (but keep minimum 1)
+        const maxMcqIdx = mcqDistribution.findIndex(m => m === Math.max(...mcqDistribution) && m > 1);
+        if (maxMcqIdx >= 0) {
+          mcqDistribution[maxMcqIdx]--;
+          currentTotal--;
+        } else break;
+      }
+    }
+    
+    // Group pages into chunks for API calls (max 60k chars per chunk)
+    const MAX_CHUNK_SIZE = 60000;
+    const batches: { content: string; questions: number; pageRange: string }[] = [];
     let currentChunk = '';
+    let currentChunkMcqs = 0;
+    let chunkStartPage = 1;
     
-    for (const page of pages) {
+    for (let i = 0; i < pages.length; i++) {
+      const page = pages[i];
+      const pageMcqs = mcqDistribution[i];
+      
       if (currentChunk.length + page.length > MAX_CHUNK_SIZE && currentChunk.length > 0) {
-        contentChunks.push(currentChunk);
+        // Save current chunk
+        batches.push({
+          content: currentChunk,
+          questions: currentChunkMcqs,
+          pageRange: `Pages ${chunkStartPage}-${i}`
+        });
         currentChunk = page;
+        currentChunkMcqs = pageMcqs;
+        chunkStartPage = i + 1;
       } else {
         currentChunk += page;
-      }
-    }
-    if (currentChunk.trim()) contentChunks.push(currentChunk);
-    
-    // If no page markers, split by character count
-    if (contentChunks.length === 0) {
-      for (let i = 0; i < content.length; i += MAX_CHUNK_SIZE) {
-        contentChunks.push(content.substring(i, i + MAX_CHUNK_SIZE));
+        currentChunkMcqs += pageMcqs;
       }
     }
     
-    // Distribute questions across content chunks proportionally
-    const numChunks = contentChunks.length;
-    const questionsPerChunk = Math.ceil(numQuestions / numChunks);
-    
-    // Create batches - very large batch size for maximum speed
-    const BATCH_SIZE = 100;
-    const batches: { content: string; questions: number; batchNum: number; chunkNum: number }[] = [];
-    let batchNum = 1;
-    
-    for (let chunkIdx = 0; chunkIdx < numChunks; chunkIdx++) {
-      const chunkContent = contentChunks[chunkIdx];
-      let questionsForThisChunk = chunkIdx === numChunks - 1 
-        ? numQuestions - (questionsPerChunk * (numChunks - 1))
-        : questionsPerChunk;
-      
-      questionsForThisChunk = Math.max(1, questionsForThisChunk);
-      
-      let remaining = questionsForThisChunk;
-      while (remaining > 0) {
-        const questionsInBatch = Math.min(BATCH_SIZE, remaining);
-        batches.push({ 
-          content: chunkContent, 
-          questions: questionsInBatch, 
-          batchNum: batchNum++,
-          chunkNum: chunkIdx + 1
-        });
-        remaining -= questionsInBatch;
-      }
+    // Don't forget last chunk
+    if (currentChunk.trim() && currentChunkMcqs > 0) {
+      batches.push({
+        content: currentChunk,
+        questions: currentChunkMcqs,
+        pageRange: `Pages ${chunkStartPage}-${pages.length}`
+      });
     }
     
-    setStatus(`⚡ Generating ${numQuestions} MCQs (${batches.length} batches, 10 parallel)...`);
+    console.log(`Coverage plan: ${pages.length} pages → ${batches.length} batches, ${numQuestions} total MCQs`);
+    
+    setStatus(`⚡ Generating ${numQuestions} MCQs from ${pages.length} pages (${batches.length} batches)...`);
     
     // Run ALL batches in parallel using all 10 API keys simultaneously
-    const batchPromises = batches.map(batch => 
-      generateMCQsBatch(batch.content, batch.questions, batch.batchNum, batches.length)
+    const batchPromises = batches.map((batch, idx) => 
+      generateMCQsBatch(batch.content, batch.questions, idx + 1, batches.length)
     );
     const results = await Promise.all(batchPromises);
     
@@ -458,7 +488,7 @@ Generate EXACTLY ${numQuestions} high-quality MCQs covering ALL concepts from ab
     // Remove duplicates to ensure unique questions
     const uniqueMcqs = deduplicateMCQs(allMcqs);
     
-    setStatus(`Generated ${uniqueMcqs.length} unique MCQs covering ALL content (${numChunks} sections)`);
+    setStatus(`Generated ${uniqueMcqs.length} unique MCQs covering ALL ${pages.length} pages`);
     
     return uniqueMcqs;
   };
