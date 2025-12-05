@@ -48,36 +48,20 @@ const extractKeyFacts = (q: string): string => {
   return numbers + words;
 };
 
-// Remove duplicate questions using multiple detection strategies
+// Fast duplicate removal using normalized text and key facts
 const deduplicateMCQs = (mcqs: MCQ[]): MCQ[] => {
-  const seenExact = new Set<string>();
-  const seenKeyFacts = new Set<string>();
-  const seenCorrectAnswer = new Map<string, Set<string>>(); // Track Q+correct combos
+  const seen = new Set<string>();
+  const seenFacts = new Set<string>();
   
   return mcqs.filter(mcq => {
-    // Strategy 1: Exact normalized match
-    const exactKey = normalizeQuestion(mcq.question);
-    if (seenExact.has(exactKey)) return false;
+    const key = normalizeQuestion(mcq.question);
+    if (seen.has(key)) return false;
     
-    // Strategy 2: Key facts match (catches rephrased duplicates)
-    const factsKey = extractKeyFacts(mcq.question);
-    if (factsKey.length > 10 && seenKeyFacts.has(factsKey)) return false;
+    const facts = extractKeyFacts(mcq.question);
+    if (facts.length > 8 && seenFacts.has(facts)) return false;
     
-    // Strategy 3: Same topic + same correct answer often = duplicate
-    const shortQ = mcq.question.toLowerCase().substring(0, 50);
-    const answerSet = seenCorrectAnswer.get(mcq.correct) || new Set();
-    for (const existing of answerSet) {
-      // If 70%+ overlap in first 50 chars with same answer, likely duplicate
-      const overlap = [...shortQ].filter((c, i) => existing[i] === c).length;
-      if (overlap / shortQ.length > 0.7) return false;
-    }
-    
-    // Mark as seen
-    seenExact.add(exactKey);
-    if (factsKey.length > 10) seenKeyFacts.add(factsKey);
-    answerSet.add(shortQ);
-    seenCorrectAnswer.set(mcq.correct, answerSet);
-    
+    seen.add(key);
+    if (facts.length > 8) seenFacts.add(facts);
     return true;
   });
 };
@@ -247,17 +231,17 @@ const SSCMCQGenerator = () => {
 
   const extractPageImage = async (pdf: any, pageNum: number): Promise<string> => {
     const page = await pdf.getPage(pageNum);
-    const scale = 1.0; // Reduced for faster processing
+    const scale = 0.8; // Lower scale for faster processing
     const viewport = page.getViewport({ scale });
     
     const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d', { willReadFrequently: false });
+    const context = canvas.getContext('2d');
     canvas.height = viewport.height;
     canvas.width = viewport.width;
     
     await page.render({ canvasContext: context, viewport }).promise;
     
-    const imageData = canvas.toDataURL('image/jpeg', 0.25); // Slightly lower quality for speed
+    const imageData = canvas.toDataURL('image/jpeg', 0.2); // Lower quality for speed
     canvas.remove();
     
     return imageData.split(',')[1];
@@ -300,38 +284,32 @@ const SSCMCQGenerator = () => {
 
   const processPDFOptimized = async (pdf: any): Promise<string> => {
     const totalPages = pdf.numPages;
-    const allContent: string[] = [];
+    const allContent: string[] = new Array(totalPages).fill(null);
     processingRef.current = { startTime: Date.now(), completed: 0 };
     
-    const BATCH_SIZE = 50;
-    const CONCURRENT_LIMIT = 30;
+    // Process ALL pages in parallel with high concurrency
+    const CONCURRENT_LIMIT = 50;
+    const pagePromises: Promise<void>[] = [];
     
-    for (let i = 0; i < totalPages; i += BATCH_SIZE) {
-      const batchEnd = Math.min(i + BATCH_SIZE, totalPages);
-      const batchPromises: Promise<string | null>[] = [];
+    const processPage = async (pNum: number): Promise<void> => {
+      let text = await extractPageText(pdf, pNum);
+      if (!text) text = await processPageWithOCR(pdf, pNum);
       
-      for (let pageNum = i + 1; pageNum <= batchEnd; pageNum++) {
-        const processPage = async (pNum: number): Promise<string | null> => {
-          let text = await extractPageText(pdf, pNum);
-          if (!text) text = await processPageWithOCR(pdf, pNum);
-          
-          processingRef.current.completed++;
-          updateProgress(processingRef.current.completed, totalPages);
-          
-          return text ? `--- Page ${pNum} ---\n${text}\n` : null;
-        };
-        
-        batchPromises.push(processPage(pageNum));
-        
-        if (batchPromises.length >= CONCURRENT_LIMIT || pageNum === batchEnd) {
-          const results = await Promise.all(batchPromises);
-          allContent.push(...results.filter((r): r is string => r !== null));
-          batchPromises.length = 0;
-        }
+      allContent[pNum - 1] = text ? `--- Page ${pNum} ---\n${text}\n` : '';
+      processingRef.current.completed++;
+      updateProgress(processingRef.current.completed, totalPages);
+    };
+    
+    // Process in waves of CONCURRENT_LIMIT
+    for (let i = 0; i < totalPages; i += CONCURRENT_LIMIT) {
+      const batch = [];
+      for (let j = i; j < Math.min(i + CONCURRENT_LIMIT, totalPages); j++) {
+        batch.push(processPage(j + 1));
       }
+      await Promise.all(batch);
     }
     
-    return allContent.join('\n');
+    return allContent.filter(Boolean).join('\n');
   };
 
   const generateMCQsBatch = async (content: string, numQuestions: number, batchNum: number, totalBatches: number, retries = 2): Promise<MCQ[]> => {
@@ -415,15 +393,15 @@ Generate EXACTLY ${numQuestions} high-quality MCQs covering ALL concepts with SS
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
-            maxOutputTokens: 20000,
-            temperature: 0.4
+            maxOutputTokens: 16000,
+            temperature: 0.3
           }
         })
       });
       
       if (!response.ok) {
         if (retries > 0) {
-          await new Promise(r => setTimeout(r, 300));
+          await new Promise(r => setTimeout(r, 100));
           return generateMCQsBatch(content, numQuestions, batchNum, totalBatches, retries - 1);
         }
         return [];
@@ -433,9 +411,8 @@ Generate EXACTLY ${numQuestions} high-quality MCQs covering ALL concepts with SS
       const mcqText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
       const mcqs = parseMCQs(mcqText);
       
-      // Retry if got too few MCQs (less than 80% of requested)
-      if (mcqs.length < numQuestions * 0.8 && retries > 0) {
-        console.log(`Batch ${batchNum}: Got ${mcqs.length}/${numQuestions}, retrying...`);
+      // Only retry if got very few MCQs (less than 60%)
+      if (mcqs.length < numQuestions * 0.6 && retries > 0) {
         return generateMCQsBatch(content, numQuestions, batchNum, totalBatches, retries - 1);
       }
       
@@ -497,51 +474,36 @@ Generate EXACTLY ${numQuestions} high-quality MCQs covering ALL concepts with SS
       }
     }
     
-    // Group pages into chunks for API calls (max 60k chars per chunk)
-    const MAX_CHUNK_SIZE = 60000;
-    const batches: { content: string; questions: number; pageRange: string }[] = [];
+    // Group pages into smaller chunks for more parallel API calls (max 40k chars)
+    const MAX_CHUNK_SIZE = 40000;
+    const batches: { content: string; questions: number }[] = [];
     let currentChunk = '';
     let currentChunkMcqs = 0;
-    let chunkStartPage = 1;
     
     for (let i = 0; i < pages.length; i++) {
       const page = pages[i];
       const pageMcqs = mcqDistribution[i];
       
       if (currentChunk.length + page.length > MAX_CHUNK_SIZE && currentChunk.length > 0) {
-        // Save current chunk
-        batches.push({
-          content: currentChunk,
-          questions: currentChunkMcqs,
-          pageRange: `Pages ${chunkStartPage}-${i}`
-        });
+        batches.push({ content: currentChunk, questions: currentChunkMcqs });
         currentChunk = page;
         currentChunkMcqs = pageMcqs;
-        chunkStartPage = i + 1;
       } else {
         currentChunk += page;
         currentChunkMcqs += pageMcqs;
       }
     }
     
-    // Don't forget last chunk
     if (currentChunk.trim() && currentChunkMcqs > 0) {
-      batches.push({
-        content: currentChunk,
-        questions: currentChunkMcqs,
-        pageRange: `Pages ${chunkStartPage}-${pages.length}`
-      });
+      batches.push({ content: currentChunk, questions: currentChunkMcqs });
     }
     
-    console.log(`Coverage plan: ${pages.length} pages → ${batches.length} batches, requesting ${targetQuestions} MCQs (target: ${numQuestions})`);
+    setStatus(`⚡ Generating ${numQuestions}+ MCQs (${batches.length} parallel batches)...`);
     
-    setStatus(`⚡ Generating ${numQuestions}+ MCQs from ${pages.length} pages (${batches.length} parallel batches)...`);
-    
-    // Run ALL batches in parallel using all 10 API keys simultaneously
-    const batchPromises = batches.map((batch, idx) => 
-      generateMCQsBatch(batch.content, batch.questions, idx + 1, batches.length)
+    // Run ALL batches in parallel
+    const results = await Promise.all(
+      batches.map((batch, idx) => generateMCQsBatch(batch.content, batch.questions, idx + 1, batches.length))
     );
-    const results = await Promise.all(batchPromises);
     
     // Combine all MCQs from all batches
     let allMcqs = results.flat();
@@ -549,40 +511,20 @@ Generate EXACTLY ${numQuestions} high-quality MCQs covering ALL concepts with SS
     // Remove duplicates to ensure unique questions
     let uniqueMcqs = deduplicateMCQs(allMcqs);
     
-    // If still short, run additional batch to fill the gap
+    // Quick retry if short - run 2 parallel batches at once
     if (uniqueMcqs.length < numQuestions) {
-      const deficit = numQuestions - uniqueMcqs.length + 10; // Extra buffer
-      setStatus(`⚡ Generating ${deficit} additional MCQs to reach target...`);
+      const deficit = numQuestions - uniqueMcqs.length + 15;
+      setStatus(`⚡ Generating ${deficit} additional MCQs...`);
       
-      // Use different content sections to avoid duplicates
-      const additionalMcqs = await generateMCQsBatch(
-        content.substring(0, 70000), 
-        deficit, 
-        batches.length + 1, 
-        batches.length + 1
-      );
+      const [batch1, batch2] = await Promise.all([
+        generateMCQsBatch(content.substring(0, 50000), Math.ceil(deficit / 2), 99, 99),
+        generateMCQsBatch(content.substring(20000, 70000), Math.ceil(deficit / 2), 100, 100)
+      ]);
       
-      allMcqs = [...uniqueMcqs, ...additionalMcqs];
-      uniqueMcqs = deduplicateMCQs(allMcqs);
+      uniqueMcqs = deduplicateMCQs([...uniqueMcqs, ...batch1, ...batch2]);
     }
     
-    // Second retry if still short
-    if (uniqueMcqs.length < numQuestions) {
-      const deficit = numQuestions - uniqueMcqs.length + 5;
-      setStatus(`⚡ Final push: generating ${deficit} more MCQs...`);
-      
-      const moreMcqs = await generateMCQsBatch(
-        content.substring(30000, 100000), 
-        deficit, 
-        batches.length + 2, 
-        batches.length + 2
-      );
-      
-      allMcqs = [...uniqueMcqs, ...moreMcqs];
-      uniqueMcqs = deduplicateMCQs(allMcqs);
-    }
-    
-    setStatus(`✅ Generated ${uniqueMcqs.length} unique MCQs covering ALL ${pages.length} pages`);
+    setStatus(`✅ Generated ${uniqueMcqs.length} unique MCQs`);
     
     return uniqueMcqs;
   };
