@@ -166,7 +166,7 @@ const SSCMCQGenerator = () => {
 
   const extractPageImage = async (pdf: any, pageNum: number): Promise<string> => {
     const page = await pdf.getPage(pageNum);
-    const scale = 1.2;
+    const scale = 1.0; // Reduced for faster processing
     const viewport = page.getViewport({ scale });
     
     const canvas = document.createElement('canvas');
@@ -176,7 +176,7 @@ const SSCMCQGenerator = () => {
     
     await page.render({ canvasContext: context, viewport }).promise;
     
-    const imageData = canvas.toDataURL('image/jpeg', 0.3);
+    const imageData = canvas.toDataURL('image/jpeg', 0.25); // Slightly lower quality for speed
     canvas.remove();
     
     return imageData.split(',')[1];
@@ -222,8 +222,8 @@ const SSCMCQGenerator = () => {
     const allContent: string[] = [];
     processingRef.current = { startTime: Date.now(), completed: 0 };
     
-    const BATCH_SIZE = 40;
-    const CONCURRENT_LIMIT = 20;
+    const BATCH_SIZE = 50;
+    const CONCURRENT_LIMIT = 30;
     
     for (let i = 0; i < totalPages; i += BATCH_SIZE) {
       const batchEnd = Math.min(i + BATCH_SIZE, totalPages);
@@ -344,8 +344,8 @@ Generate EXACTLY ${numQuestions} MCQs now, focusing on SSC EXAM TRENDS with CLEA
           }]
         }],
         generationConfig: {
-          maxOutputTokens: 32000,
-          temperature: 1
+          maxOutputTokens: 24000,
+          temperature: 0.8
         }
       })
     });
@@ -416,12 +416,18 @@ Generate EXACTLY ${numQuestions} MCQs now, focusing on SSC EXAM TRENDS with CLEA
     
     setStatus(`Generating ${numQuestions} MCQs from ${numChunks} content sections (${batches.length} batches)...`);
     
-    // Run all batches in parallel using different API keys
-    const batchPromises = batches.map(batch => 
-      generateMCQsBatch(batch.content, batch.questions, batch.batchNum, batches.length)
-    );
+    // Run all batches in parallel using different API keys with higher concurrency
+    const PARALLEL_BATCHES = Math.min(10, batches.length); // Up to 10 parallel API calls
+    const results: MCQ[][] = [];
     
-    const results = await Promise.all(batchPromises);
+    for (let i = 0; i < batches.length; i += PARALLEL_BATCHES) {
+      const batchSlice = batches.slice(i, i + PARALLEL_BATCHES);
+      const batchPromises = batchSlice.map(batch => 
+        generateMCQsBatch(batch.content, batch.questions, batch.batchNum, batches.length)
+      );
+      const sliceResults = await Promise.all(batchPromises);
+      results.push(...sliceResults);
+    }
     
     // Combine all MCQs from all batches
     const allMcqs = results.flat();
