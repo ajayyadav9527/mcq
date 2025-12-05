@@ -35,33 +35,66 @@ const GEMINI_API_KEYS = [
   "AIzaSyAzR-Ege3fmjAWp1f6WCrN_YnJOUVJEM-U"
 ];
 
-// Helper to normalize question text for comparison - multiple strategies
+// Helper to normalize question text for comparison
 const normalizeQuestion = (q: string): string => 
-  q.toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 150);
+  q.toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 200);
 
-// Extract key facts from question for semantic matching
+// Extract key facts: numbers, years, names for semantic matching
 const extractKeyFacts = (q: string): string => {
   const normalized = q.toLowerCase();
-  // Extract numbers, dates, proper nouns
-  const numbers = (normalized.match(/\d+/g) || []).join('');
-  const words = normalized.split(/\s+/).filter(w => w.length > 4).slice(0, 8).join('');
-  return numbers + words;
+  const numbers = (normalized.match(/\d+/g) || []).join('-');
+  const words = normalized.split(/\s+/).filter(w => w.length > 5).slice(0, 6).sort().join('');
+  return numbers + '|' + words;
 };
 
-// Fast duplicate removal using normalized text and key facts
+// Extract answer signature: correct answer + key topic words
+const getAnswerSignature = (mcq: MCQ): string => {
+  const correctOpt = mcq.options.find(o => o.toLowerCase().startsWith(mcq.correct + ')')) || '';
+  const answerText = correctOpt.replace(/^[a-d]\)\s*/i, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  return mcq.correct + ':' + answerText.substring(0, 50);
+};
+
+// Extract distinctive keywords from question
+const getKeywordSignature = (q: string): string => {
+  const words = q.toLowerCase()
+    .replace(/[^a-z\s]/g, '')
+    .split(/\s+/)
+    .filter(w => w.length > 4 && !['which', 'following', 'among', 'about', 'these', 'related', 'given', 'statement'].includes(w))
+    .sort()
+    .slice(0, 5);
+  return words.join('|');
+};
+
+// Robust duplicate removal with multiple strategies - prioritize uniqueness
 const deduplicateMCQs = (mcqs: MCQ[]): MCQ[] => {
-  const seen = new Set<string>();
+  const seenNormalized = new Set<string>();
   const seenFacts = new Set<string>();
+  const seenAnswers = new Set<string>();
+  const seenKeywords = new Set<string>();
   
   return mcqs.filter(mcq => {
-    const key = normalizeQuestion(mcq.question);
-    if (seen.has(key)) return false;
+    // Strategy 1: Exact normalized text match
+    const normalizedKey = normalizeQuestion(mcq.question);
+    if (seenNormalized.has(normalizedKey)) return false;
     
-    const facts = extractKeyFacts(mcq.question);
-    if (facts.length > 8 && seenFacts.has(facts)) return false;
+    // Strategy 2: Same key facts (numbers, key words)
+    const factsKey = extractKeyFacts(mcq.question);
+    if (factsKey.length > 12 && seenFacts.has(factsKey)) return false;
     
-    seen.add(key);
-    if (facts.length > 8) seenFacts.add(facts);
+    // Strategy 3: Same correct answer text (catches rephrased questions)
+    const answerSig = getAnswerSignature(mcq);
+    if (answerSig.length > 10 && seenAnswers.has(answerSig)) return false;
+    
+    // Strategy 4: Same distinctive keywords (catches semantic duplicates)
+    const keywordSig = getKeywordSignature(mcq.question);
+    if (keywordSig.length > 15 && seenKeywords.has(keywordSig)) return false;
+    
+    // Mark as seen
+    seenNormalized.add(normalizedKey);
+    if (factsKey.length > 12) seenFacts.add(factsKey);
+    if (answerSig.length > 10) seenAnswers.add(answerSig);
+    if (keywordSig.length > 15) seenKeywords.add(keywordSig);
+    
     return true;
   });
 };
