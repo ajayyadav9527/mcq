@@ -58,7 +58,7 @@ const getNextApiKey = () => {
 };
 
 const getGeminiUrl = (key: string) => 
-  `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${key}`;
+  `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
 
 const SSCMCQGenerator = () => {
   const navigate = useNavigate();
@@ -253,17 +253,31 @@ const SSCMCQGenerator = () => {
     return allContent.join('\n');
   };
 
-  const generateMCQsBatch = async (content: string, numQuestions: number, batchNum: number, totalBatches: number, retries = 1): Promise<MCQ[]> => {
+  const generateMCQsBatch = async (content: string, numQuestions: number, batchNum: number, totalBatches: number, retries = 2): Promise<MCQ[]> => {
     const apiKey = getNextApiKey();
     
-    const prompt = `Generate ${numQuestions} ${exam} MCQs from this content. Format each as:
-Q1. Question
-a) b) c) d) options
-Correct Answer: letter
-Explanation: Brief why correct + tip
+    const prompt = `You are an expert ${exam} exam teacher. Generate EXACTLY ${numQuestions} high-quality MCQs.
+
+FORMAT (follow strictly):
+Q1. [Clear, exam-style question]
+a) [Option A]
+b) [Option B]
+c) [Option C]
+d) [Option D]
+Correct Answer: [single letter a/b/c/d]
+Explanation: [5-6 sentences in simple language: (1) Why correct answer is right with key fact, (2) Simple analogy or example to understand concept, (3) Why other options are wrong briefly, (4) Memory tip or trick to remember, (5) SSC exam relevance if any]
+
+RULES:
+- Questions must be accurate and error-free
+- Use simple 10th-grade friendly language in explanations
+- Include analogies to make concepts easy to understand
+- Cover important facts, dates, names, concepts from content
+- Each question must have exactly 4 options with ONE correct answer
 
 CONTENT:
-${content.substring(0, 50000)}`;
+${content.substring(0, 60000)}
+
+Generate ${numQuestions} MCQs now:`;
 
     try {
       const response = await fetch(getGeminiUrl(apiKey), {
@@ -272,22 +286,32 @@ ${content.substring(0, 50000)}`;
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
-            maxOutputTokens: 12000,
-            temperature: 0.4
+            maxOutputTokens: 16000,
+            temperature: 0.5
           }
         })
       });
       
       if (!response.ok) {
-        if (retries > 0) return generateMCQsBatch(content, numQuestions, batchNum, totalBatches, 0);
+        if (retries > 0) {
+          await new Promise(r => setTimeout(r, 300));
+          return generateMCQsBatch(content, numQuestions, batchNum, totalBatches, retries - 1);
+        }
         return [];
       }
       
       const data = await response.json();
       const mcqText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      return parseMCQs(mcqText);
+      const mcqs = parseMCQs(mcqText);
+      
+      // Retry if got too few MCQs
+      if (mcqs.length < numQuestions * 0.6 && retries > 0) {
+        return generateMCQsBatch(content, numQuestions, batchNum, totalBatches, retries - 1);
+      }
+      
+      return mcqs;
     } catch (err) {
-      if (retries > 0) return generateMCQsBatch(content, numQuestions, batchNum, totalBatches, 0);
+      if (retries > 0) return generateMCQsBatch(content, numQuestions, batchNum, totalBatches, retries - 1);
       return [];
     }
   };
