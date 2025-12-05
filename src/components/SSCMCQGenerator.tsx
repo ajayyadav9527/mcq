@@ -401,8 +401,9 @@ Generate EXACTLY ${numQuestions} high-quality MCQs covering ALL concepts with SS
       const mcqText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
       const mcqs = parseMCQs(mcqText);
       
-      // Retry if got too few MCQs
-      if (mcqs.length < numQuestions * 0.6 && retries > 0) {
+      // Retry if got too few MCQs (less than 80% of requested)
+      if (mcqs.length < numQuestions * 0.8 && retries > 0) {
+        console.log(`Batch ${batchNum}: Got ${mcqs.length}/${numQuestions}, retrying...`);
         return generateMCQsBatch(content, numQuestions, batchNum, totalBatches, retries - 1);
       }
       
@@ -414,6 +415,9 @@ Generate EXACTLY ${numQuestions} high-quality MCQs covering ALL concepts with SS
   };
 
   const generateMCQs = async (content: string, numQuestions: number): Promise<MCQ[]> => {
+    // Request 30% MORE questions to compensate for duplicates and parsing failures
+    const targetQuestions = Math.ceil(numQuestions * 1.3);
+    
     // Split content by PAGES to ensure EVERY page is covered
     const pages = content.split(/(?=--- Page \d+ ---)/).filter(p => p.trim().length > 50);
     const totalPages = pages.length;
@@ -440,13 +444,13 @@ Generate EXACTLY ${numQuestions} high-quality MCQs covering ALL concepts with SS
     // Minimum 1 MCQ per page to ensure complete coverage
     let mcqDistribution: number[] = pages.map((_, idx) => {
       const proportion = pageWeights[idx] / totalWeight;
-      return Math.max(1, Math.round(numQuestions * proportion));
+      return Math.max(1, Math.round(targetQuestions * proportion));
     });
     
-    // Adjust to match exact total
+    // Adjust to match target total
     let currentTotal = mcqDistribution.reduce((a, b) => a + b, 0);
-    while (currentTotal !== numQuestions) {
-      if (currentTotal < numQuestions) {
+    while (currentTotal !== targetQuestions) {
+      if (currentTotal < targetQuestions) {
         // Add to heaviest pages
         const maxIdx = pageWeights.indexOf(Math.max(...pageWeights));
         mcqDistribution[maxIdx]++;
@@ -497,9 +501,9 @@ Generate EXACTLY ${numQuestions} high-quality MCQs covering ALL concepts with SS
       });
     }
     
-    console.log(`Coverage plan: ${pages.length} pages → ${batches.length} batches, ${numQuestions} total MCQs`);
+    console.log(`Coverage plan: ${pages.length} pages → ${batches.length} batches, requesting ${targetQuestions} MCQs (target: ${numQuestions})`);
     
-    setStatus(`⚡ Generating ${numQuestions} MCQs from ${pages.length} pages (${batches.length} batches)...`);
+    setStatus(`⚡ Generating ${numQuestions}+ MCQs from ${pages.length} pages (${batches.length} parallel batches)...`);
     
     // Run ALL batches in parallel using all 10 API keys simultaneously
     const batchPromises = batches.map((batch, idx) => 
@@ -508,12 +512,45 @@ Generate EXACTLY ${numQuestions} high-quality MCQs covering ALL concepts with SS
     const results = await Promise.all(batchPromises);
     
     // Combine all MCQs from all batches
-    const allMcqs = results.flat();
+    let allMcqs = results.flat();
     
     // Remove duplicates to ensure unique questions
-    const uniqueMcqs = deduplicateMCQs(allMcqs);
+    let uniqueMcqs = deduplicateMCQs(allMcqs);
     
-    setStatus(`Generated ${uniqueMcqs.length} unique MCQs covering ALL ${pages.length} pages`);
+    // If still short, run additional batch to fill the gap
+    if (uniqueMcqs.length < numQuestions) {
+      const deficit = numQuestions - uniqueMcqs.length + 10; // Extra buffer
+      setStatus(`⚡ Generating ${deficit} additional MCQs to reach target...`);
+      
+      // Use different content sections to avoid duplicates
+      const additionalMcqs = await generateMCQsBatch(
+        content.substring(0, 70000), 
+        deficit, 
+        batches.length + 1, 
+        batches.length + 1
+      );
+      
+      allMcqs = [...uniqueMcqs, ...additionalMcqs];
+      uniqueMcqs = deduplicateMCQs(allMcqs);
+    }
+    
+    // Second retry if still short
+    if (uniqueMcqs.length < numQuestions) {
+      const deficit = numQuestions - uniqueMcqs.length + 5;
+      setStatus(`⚡ Final push: generating ${deficit} more MCQs...`);
+      
+      const moreMcqs = await generateMCQsBatch(
+        content.substring(30000, 100000), 
+        deficit, 
+        batches.length + 2, 
+        batches.length + 2
+      );
+      
+      allMcqs = [...uniqueMcqs, ...moreMcqs];
+      uniqueMcqs = deduplicateMCQs(allMcqs);
+    }
+    
+    setStatus(`✅ Generated ${uniqueMcqs.length} unique MCQs covering ALL ${pages.length} pages`);
     
     return uniqueMcqs;
   };
