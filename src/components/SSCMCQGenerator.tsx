@@ -305,10 +305,19 @@ const SSCMCQGenerator = () => {
   const generateMCQsBatch = async (content: string, numQuestions: number, batchNum: number, totalBatches: number, retries = 2): Promise<MCQ[]> => {
     const apiKey = getNextApiKey();
     
-    const prompt = `You are India's TOP ${exam} exam coach with 20+ years experience. Your task: Create EXACTLY ${numQuestions} PERFECT MCQs that cover ALL concepts from this content.
+    const prompt = `You are India's TOP ${exam} exam coach with 20+ years experience. Current Date: December 2025.
+Your task: Create EXACTLY ${numQuestions} PERFECT MCQs that cover ALL concepts from this content.
+
+🔥 SSC EXAM TREND PRIORITY (June 2024 - December 2025):
+Focus on topics/patterns ACTUALLY ASKED in recent ${exam} exams:
+- HIGH WEIGHTAGE: Indian Polity (Articles, Amendments, Fundamental Rights/Duties), Economy (Budget 2024-25, GDP, Inflation), Current Affairs (G20, BRICS, Sports events)
+- FREQUENTLY ASKED: Constitutional bodies, Government schemes (PM schemes, welfare programs), Important dates & events, First in India/World
+- TRENDING TOPICS: Digital India initiatives, Environmental policies, International summits, Awards & honors, Scientific developments
+- EXAM PATTERNS: Direct fact-based questions, "Which of the following" match-the-pair, Chronological ordering, "Consider the statements" type
+- If content has topics from above categories, create MORE questions on them
 
 📋 STRICT OUTPUT FORMAT (follow EXACTLY):
-Q1. [Direct, clear question testing a specific fact/concept]
+Q1. [Direct, clear question testing a specific fact/concept - match SSC exam style]
 a) [Option - plausible but wrong OR correct]
 b) [Option - plausible but wrong OR correct]
 c) [Option - plausible but wrong OR correct]
@@ -323,18 +332,19 @@ Explanation: [Professional 6-8 sentence explanation - see format below]
 4. CONTEXT: Brief background - why this topic matters, historical significance, or real-world application.
 5. WRONG OPTIONS: Briefly explain why each wrong option is incorrect (1 line each).
 6. MEMORY TIP: Give a trick, mnemonic, or association to remember this fact easily.
-7. EXAM TIP: If relevant, mention how often this appears in SSC exams or related questions.
+7. EXAM TIP: Mention if this topic appeared in recent SSC exams (2024-2025) or is expected.
 
 🎯 CONTENT COVERAGE RULES:
 - Extract EVERY important fact, date, name, article, scheme, place from the content
 - Create questions on ALL topics/sections present - don't skip any part
+- PRIORITIZE topics matching recent SSC trends (June 2024 - Dec 2025)
 - Include questions on: definitions, dates, names, places, numbers, comparisons, processes
-- Prioritize facts that are commonly asked in ${exam} exams (2020-2024 trends)
 - Each question must test a DIFFERENT concept - no repetition
+- Cover ALL pages/sections proportionally
 
 ✅ QUALITY STANDARDS:
 - 100% factually accurate - verify before including
-- Questions must be clear, unambiguous, exam-style
+- Questions must match actual SSC exam difficulty and style
 - All 4 options must be plausible (avoid obviously wrong options)
 - Only ONE correct answer per question
 - Use simple English that a Class 10 student can understand
@@ -343,13 +353,13 @@ Explanation: [Professional 6-8 sentence explanation - see format below]
 ❌ AVOID:
 - Vague questions like "Which of the following is true?"
 - Options that are too similar or confusing
-- Incomplete or unclear explanations
+- Outdated information (pre-2020) unless historically important
 - Missing any section of the provided content
 
-CONTENT TO COVER (extract MCQs from ALL parts):
+CONTENT TO COVER (extract MCQs from ALL parts, prioritize trending SSC topics):
 ${content.substring(0, 70000)}
 
-Generate EXACTLY ${numQuestions} high-quality MCQs covering ALL concepts from above content:`;
+Generate EXACTLY ${numQuestions} high-quality MCQs covering ALL concepts with SSC 2024-2025 exam focus:`;
 
     try {
       const response = await fetch(getGeminiUrl(apiKey), {
