@@ -571,16 +571,43 @@ Generate EXACTLY ${numQuestions} MCQs now, focusing on SSC EXAM TRENDS with CLEA
           </div>
           
           <div>
-            <label className="block text-gray-700 font-semibold mb-2">🔢 MCQs (1-500)</label>
-            <input
-              type="number" 
-              value={count}
-              onChange={(e) => setCount(parseInt(e.target.value) || 1)}
-              min="1"
-              max="500"
-              className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none transition-colors"
-              disabled={processing || !pdfLibLoaded || autoCount}
-            />
+            <label className="block text-gray-700 font-semibold mb-2">🔢 Number of MCQs</label>
+            <div className="relative">
+              <input
+                type="number" 
+                value={count}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value);
+                  if (!isNaN(val)) setCount(Math.min(500, Math.max(1, val)));
+                }}
+                min="1"
+                max="500"
+                placeholder="Enter 1-500"
+                className="w-full p-3 pr-16 text-lg font-semibold border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none transition-all disabled:bg-gray-100 disabled:text-gray-500"
+                disabled={processing || !pdfLibLoaded || autoCount}
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 font-medium">
+                MCQs
+              </span>
+            </div>
+            {/* Quick preset buttons */}
+            <div className="flex gap-2 mt-2 flex-wrap">
+              {[10, 25, 50, 100, 200].map(preset => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => { setAutoCount(false); setCount(preset); }}
+                  disabled={processing || !pdfLibLoaded}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all ${
+                    count === preset && !autoCount
+                      ? 'bg-blue-600 text-white shadow-md'
+                      : 'bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700'
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  {preset}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
