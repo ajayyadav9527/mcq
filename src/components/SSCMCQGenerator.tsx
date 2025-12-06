@@ -65,35 +65,23 @@ const getKeywordSignature = (q: string): string => {
   return words.join('|');
 };
 
-// Robust duplicate removal with multiple strategies - prioritize uniqueness
+// Reduced deduplication - only 2 strategies to avoid false positives
 const deduplicateMCQs = (mcqs: MCQ[]): MCQ[] => {
   const seenNormalized = new Set<string>();
   const seenFacts = new Set<string>();
-  const seenAnswers = new Set<string>();
-  const seenKeywords = new Set<string>();
   
   return mcqs.filter(mcq => {
     // Strategy 1: Exact normalized text match
     const normalizedKey = normalizeQuestion(mcq.question);
     if (seenNormalized.has(normalizedKey)) return false;
     
-    // Strategy 2: Same key facts (numbers, key words)
+    // Strategy 2: Same key facts with higher threshold (20 chars)
     const factsKey = extractKeyFacts(mcq.question);
-    if (factsKey.length > 12 && seenFacts.has(factsKey)) return false;
-    
-    // Strategy 3: Same correct answer text (catches rephrased questions)
-    const answerSig = getAnswerSignature(mcq);
-    if (answerSig.length > 10 && seenAnswers.has(answerSig)) return false;
-    
-    // Strategy 4: Same distinctive keywords (catches semantic duplicates)
-    const keywordSig = getKeywordSignature(mcq.question);
-    if (keywordSig.length > 15 && seenKeywords.has(keywordSig)) return false;
+    if (factsKey.length > 20 && seenFacts.has(factsKey)) return false;
     
     // Mark as seen
     seenNormalized.add(normalizedKey);
-    if (factsKey.length > 12) seenFacts.add(factsKey);
-    if (answerSig.length > 10) seenAnswers.add(answerSig);
-    if (keywordSig.length > 15) seenKeywords.add(keywordSig);
+    if (factsKey.length > 20) seenFacts.add(factsKey);
     
     return true;
   });
@@ -406,7 +394,7 @@ Generate EXACTLY ${numQuestions} high-quality, unique MCQs based on PRECISE anal
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
-            maxOutputTokens: 14000,
+            maxOutputTokens: 20000,
             temperature: 0.25
           }
         })
@@ -438,8 +426,9 @@ Generate EXACTLY ${numQuestions} high-quality, unique MCQs based on PRECISE anal
   };
 
   const generateMCQs = async (content: string, numQuestions: number): Promise<MCQ[]> => {
-    // Request 30% MORE questions to compensate for duplicates and parsing failures
-    const targetQuestions = Math.ceil(numQuestions * 1.3);
+    // Request 50% MORE questions to compensate for duplicates and parsing failures
+    const targetQuestions = Math.ceil(numQuestions * 1.5);
+    const MAX_MCQS_PER_BATCH = 35; // Safe limit to prevent MAX_TOKENS truncation
     
     // Split content by PAGES to ensure EVERY page is covered
     const pages = content.split(/(?=--- Page \d+ ---)/).filter(p => p.trim().length > 50);
@@ -499,7 +488,20 @@ Generate EXACTLY ${numQuestions} high-quality, unique MCQs based on PRECISE anal
       const pageMcqs = mcqDistribution[i];
       
       if (currentChunk.length + page.length > MAX_CHUNK_SIZE && currentChunk.length > 0) {
-        batches.push({ content: currentChunk, questions: currentChunkMcqs });
+        // Split batch if MCQs exceed safe limit
+        if (currentChunkMcqs > MAX_MCQS_PER_BATCH) {
+          const splitCount = Math.ceil(currentChunkMcqs / MAX_MCQS_PER_BATCH);
+          const chunkSize = Math.ceil(currentChunk.length / splitCount);
+          const mcqsPerSplit = Math.ceil(currentChunkMcqs / splitCount);
+          for (let s = 0; s < splitCount; s++) {
+            batches.push({ 
+              content: currentChunk.substring(s * chunkSize, (s + 1) * chunkSize), 
+              questions: mcqsPerSplit 
+            });
+          }
+        } else {
+          batches.push({ content: currentChunk, questions: currentChunkMcqs });
+        }
         currentChunk = page;
         currentChunkMcqs = pageMcqs;
       } else {
@@ -509,7 +511,20 @@ Generate EXACTLY ${numQuestions} high-quality, unique MCQs based on PRECISE anal
     }
     
     if (currentChunk.trim() && currentChunkMcqs > 0) {
-      batches.push({ content: currentChunk, questions: currentChunkMcqs });
+      // Split final batch if needed
+      if (currentChunkMcqs > MAX_MCQS_PER_BATCH) {
+        const splitCount = Math.ceil(currentChunkMcqs / MAX_MCQS_PER_BATCH);
+        const chunkSize = Math.ceil(currentChunk.length / splitCount);
+        const mcqsPerSplit = Math.ceil(currentChunkMcqs / splitCount);
+        for (let s = 0; s < splitCount; s++) {
+          batches.push({ 
+            content: currentChunk.substring(s * chunkSize, (s + 1) * chunkSize), 
+            questions: mcqsPerSplit 
+          });
+        }
+      } else {
+        batches.push({ content: currentChunk, questions: currentChunkMcqs });
+      }
     }
     
     setStatus(`⚡ Generating ${numQuestions}+ MCQs (${batches.length} parallel batches)...`);
@@ -525,20 +540,50 @@ Generate EXACTLY ${numQuestions} high-quality, unique MCQs based on PRECISE anal
     // Remove duplicates to ensure unique questions
     let uniqueMcqs = deduplicateMCQs(allMcqs);
     
-    // Quick retry if short - run 2 parallel batches at once
-    if (uniqueMcqs.length < numQuestions) {
-      const deficit = numQuestions - uniqueMcqs.length + 15;
-      setStatus(`⚡ Generating ${deficit} additional MCQs...`);
+    // Retry loop until target is met (max 3 attempts)
+    let retryAttempt = 0;
+    const MAX_RETRIES = 3;
+    const contentLength = content.length;
+    
+    while (uniqueMcqs.length < numQuestions && retryAttempt < MAX_RETRIES) {
+      retryAttempt++;
+      const deficit = numQuestions - uniqueMcqs.length;
+      const extraNeeded = Math.ceil(deficit * 1.3) + 10; // 30% extra + 10 buffer
       
-      const [batch1, batch2] = await Promise.all([
-        generateMCQsBatch(content.substring(0, 50000), Math.ceil(deficit / 2), 99, 99),
-        generateMCQsBatch(content.substring(20000, 70000), Math.ceil(deficit / 2), 100, 100)
-      ]);
+      setStatus(`⚡ Retry ${retryAttempt}/${MAX_RETRIES}: Generating ${extraNeeded} additional MCQs (need ${deficit} more)...`);
+      console.log(`Retry ${retryAttempt}: Have ${uniqueMcqs.length}, need ${numQuestions}, generating ${extraNeeded} more`);
       
-      uniqueMcqs = deduplicateMCQs([...uniqueMcqs, ...batch1, ...batch2]);
+      // Sample different content portions for each retry to get diverse questions
+      const retryBatches: Promise<MCQ[]>[] = [];
+      const batchSize = Math.min(extraNeeded, MAX_MCQS_PER_BATCH);
+      const numRetryBatches = Math.ceil(extraNeeded / batchSize);
+      
+      for (let b = 0; b < numRetryBatches; b++) {
+        // Use different content sections for each batch
+        const startOffset = Math.floor((b / numRetryBatches) * contentLength * 0.5);
+        const endOffset = Math.min(startOffset + 55000, contentLength);
+        const sampleContent = content.substring(startOffset, endOffset);
+        
+        retryBatches.push(generateMCQsBatch(
+          sampleContent, 
+          Math.min(batchSize, extraNeeded - (b * batchSize)), 
+          100 + retryAttempt * 10 + b, 
+          100
+        ));
+      }
+      
+      const retryResults = await Promise.all(retryBatches);
+      const newMcqs = retryResults.flat();
+      
+      uniqueMcqs = deduplicateMCQs([...uniqueMcqs, ...newMcqs]);
+      console.log(`After retry ${retryAttempt}: ${uniqueMcqs.length} unique MCQs`);
     }
     
-    setStatus(`✅ Generated ${uniqueMcqs.length} unique MCQs`);
+    if (uniqueMcqs.length < numQuestions) {
+      console.warn(`Warning: Could only generate ${uniqueMcqs.length}/${numQuestions} MCQs after ${MAX_RETRIES} retries`);
+    }
+    
+    setStatus(`✅ Generated ${uniqueMcqs.length} unique MCQs (requested: ${numQuestions})`);
     
     return uniqueMcqs;
   };
