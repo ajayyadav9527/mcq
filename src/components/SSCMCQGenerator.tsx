@@ -343,49 +343,49 @@ const SSCMCQGenerator = () => {
     const trendStartYear = currentMonth >= 7 ? currentYear - 1 : currentYear - 2;
     const trendStartMonth = currentMonth >= 7 ? currentMonth - 6 : currentMonth + 6;
     
-    const prompt = `You are an SSC exam expert. THOROUGHLY ANALYZE every word, fact, date, name, number, and detail in the content below. Create EXACTLY ${numQuestions} MCQs for SSC ${exam}.
+    const prompt = `You are an SSC exam expert with EXCEPTIONAL attention to detail. Your task: READ AND ANALYZE EVERY SINGLE WORD in the content below, then create EXACTLY ${numQuestions} MCQs for SSC ${exam}.
 
-CRITICAL ANALYSIS INSTRUCTIONS:
-1. READ EVERY WORD CAREFULLY - extract ALL factual information
-2. Identify: dates, years, numbers, percentages, names, places, articles, amendments, schemes, acts, committees, organizations
-3. Note relationships: who did what, when, where, why
-4. Focus on SSC exam trends from ${trendStartMonth}/${trendStartYear} to ${currentMonth}/${currentYear} (last 1.5 years)
+## WORD-BY-WORD ANALYSIS PROTOCOL (MANDATORY):
+STEP 1 - SCAN ENTIRE CONTENT: Read from first word to last word. Miss NOTHING.
+STEP 2 - EXTRACT ALL DATA POINTS:
+  • Every NUMBER (years, dates, amounts, percentages, ranks, positions)
+  • Every PROPER NOUN (names of people, places, organizations, schemes, acts)
+  • Every ARTICLE/SECTION reference (Article 21, Section 144, etc.)
+  • Every DEFINITION and KEY TERM with its meaning
+  • Every RELATIONSHIP (who founded what, when, where, why)
+  • Every SEQUENCE (first, second, largest, smallest, oldest, newest)
+  • Every COMPARISON (more than, less than, between)
+STEP 3 - VERIFY ACCURACY: Cross-check each fact before creating question
 
-SSC ${exam} RECENT TREND FOCUS (${trendStartYear}-${currentYear}):
-- Constitutional Articles & Amendments (especially recent ones)
-- Government schemes launched/modified recently
-- Important appointments & awards
-- Sports events, championships, records
-- International treaties & organizations
-- Scientific discoveries & technology updates
-- Historical dates & anniversaries
-- Economic data: GDP, budget, policies
-- Geography: rivers, mountains, boundaries, states
-- Current affairs tested in recent SSC papers
+## SSC ${exam} TREND ANALYSIS (${trendStartMonth}/${trendStartYear} to ${currentMonth}/${currentYear}):
+Focus on high-weightage topics actually asked in recent SSC exams:
+• Constitutional Articles & Amendments • Government Schemes (launch dates, beneficiaries)
+• Appointments & Awards (with exact dates) • Sports (records, venues, winners)
+• Treaties & International Organizations • Scientific Discoveries & Inventions
+• Historical Events & Anniversaries • Economic Data (GDP, Budget figures)
+• Geography (rivers, mountains, capitals) • Current Affairs from past 1.5 years
 
-OUTPUT FORMAT (STRICT):
-Q1. [Precise question testing ONE specific fact - include exact names/dates/numbers from content]
-a) [Correct or plausible option]
-b) [Plausible distractor]
-c) [Plausible distractor]
-d) [Plausible distractor]
+## STRICT OUTPUT FORMAT:
+Q1. [Question testing ONE SPECIFIC fact - use EXACT numbers/names/dates from content]
+a) [Option - correct or plausible]
+b) [Option - plausible distractor]
+c) [Option - plausible distractor]  
+d) [Option - plausible distractor]
 Correct Answer: [a/b/c/d]
-Explanation: The correct answer is [letter]) [answer]. [State the exact fact with all relevant details - dates, numbers, names]. [Explain the significance/context in 1-2 sentences]. [Why option X is wrong: brief reason]. [Why option Y is wrong: brief reason]. [Why option Z is wrong: brief reason]. [Memory tip: mnemonic or association to remember this fact].
+Explanation: [letter]) [answer] is correct. [State exact fact with all details]. [Context/significance]. [Why other options wrong]. [Memory tip].
 
-QUALITY RULES:
-- EVERY question must test a DIFFERENT concept from the content
-- Extract EXACT facts: if content says "Article 370" don't write "Article 371"
-- If content mentions "1950", question must use "1950" not approximate
-- All 4 options must be plausible (similar category/type)
-- Distractors should be related but clearly wrong
-- SSC exam style: direct, fact-based, single correct answer
-- Simple English suitable for Class 10 students
-- Cover ALL sections of content proportionally
+## QUALITY REQUIREMENTS:
+✓ Each question tests a UNIQUE concept - NO repetition
+✓ EXACT facts only: "Article 370" NOT "Article 371", "1950" NOT "1949"
+✓ All 4 options must be same category (all years, all names, all places)
+✓ SSC style: direct, fact-based, single correct answer
+✓ Simple English for Class 10 students
+✓ Cover ENTIRE content proportionally - beginning, middle, AND end
 
-CONTENT TO ANALYZE (read every detail):
-${content.substring(0, 55000)}
+## CONTENT TO ANALYZE (READ EVERY WORD):
+${content.substring(0, 60000)}
 
-Generate EXACTLY ${numQuestions} high-quality, unique MCQs based on PRECISE analysis of above content:`;
+Generate EXACTLY ${numQuestions} unique, high-quality MCQs based on PRECISE word-by-word analysis:`;
 
     try {
       const response = await fetch(getGeminiUrl(apiKey), {
