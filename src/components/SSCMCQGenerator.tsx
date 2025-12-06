@@ -65,7 +65,7 @@ const getKeywordSignature = (q: string): string => {
   return words.join('|');
 };
 
-// STRICT deduplication - uniqueness is priority (allow 20-30 fewer if needed)
+// Robust duplicate removal with multiple strategies - prioritize uniqueness
 const deduplicateMCQs = (mcqs: MCQ[]): MCQ[] => {
   const seenNormalized = new Set<string>();
   const seenFacts = new Set<string>();
@@ -77,23 +77,23 @@ const deduplicateMCQs = (mcqs: MCQ[]): MCQ[] => {
     const normalizedKey = normalizeQuestion(mcq.question);
     if (seenNormalized.has(normalizedKey)) return false;
     
-    // Strategy 2: Same key facts (numbers + key words)
+    // Strategy 2: Same key facts (numbers, key words)
     const factsKey = extractKeyFacts(mcq.question);
-    if (factsKey.length > 15 && seenFacts.has(factsKey)) return false;
+    if (factsKey.length > 12 && seenFacts.has(factsKey)) return false;
     
-    // Strategy 3: Same correct answer + topic (catches rephrased questions)
+    // Strategy 3: Same correct answer text (catches rephrased questions)
     const answerSig = getAnswerSignature(mcq);
-    if (answerSig.length > 8 && seenAnswers.has(answerSig)) return false;
+    if (answerSig.length > 10 && seenAnswers.has(answerSig)) return false;
     
     // Strategy 4: Same distinctive keywords (catches semantic duplicates)
     const keywordSig = getKeywordSignature(mcq.question);
-    if (keywordSig.length > 12 && seenKeywords.has(keywordSig)) return false;
+    if (keywordSig.length > 15 && seenKeywords.has(keywordSig)) return false;
     
     // Mark as seen
     seenNormalized.add(normalizedKey);
-    if (factsKey.length > 15) seenFacts.add(factsKey);
-    if (answerSig.length > 8) seenAnswers.add(answerSig);
-    if (keywordSig.length > 12) seenKeywords.add(keywordSig);
+    if (factsKey.length > 12) seenFacts.add(factsKey);
+    if (answerSig.length > 10) seenAnswers.add(answerSig);
+    if (keywordSig.length > 15) seenKeywords.add(keywordSig);
     
     return true;
   });
@@ -348,56 +348,36 @@ const SSCMCQGenerator = () => {
   const generateMCQsBatch = async (content: string, numQuestions: number, batchNum: number, totalBatches: number, retries = 1): Promise<MCQ[]> => {
     const apiKey = getNextApiKey();
     
-    // Dynamic 1.5 year trend calculation from current date
-    const currentDate = new Date();
-    const currentYear = currentDate.getFullYear();
-    const currentMonth = currentDate.getMonth() + 1;
-    const trendStartYear = currentMonth >= 7 ? currentYear - 1 : currentYear - 2;
-    const trendStartMonth = currentMonth >= 7 ? currentMonth - 6 : currentMonth + 6;
+    const currentYear = new Date().getFullYear();
+    const pastYear = currentYear - 1;
     
-    const prompt = `You are an SSC exam expert with EXCEPTIONAL attention to detail. Your task: READ AND ANALYZE EVERY SINGLE WORD in the content below, then create EXACTLY ${numQuestions} MCQs for SSC ${exam}.
+    const prompt = `Create EXACTLY ${numQuestions} SSC ${exam} MCQs from this content. Focus: ${pastYear}-${currentYear} exam trends.
 
-## WORD-BY-WORD ANALYSIS PROTOCOL (MANDATORY):
-STEP 1 - SCAN ENTIRE CONTENT: Read from first word to last word. Miss NOTHING.
-STEP 2 - EXTRACT ALL DATA POINTS:
-  • Every NUMBER (years, dates, amounts, percentages, ranks, positions)
-  • Every PROPER NOUN (names of people, places, organizations, schemes, acts)
-  • Every ARTICLE/SECTION reference (Article 21, Section 144, etc.)
-  • Every DEFINITION and KEY TERM with its meaning
-  • Every RELATIONSHIP (who founded what, when, where, why)
-  • Every SEQUENCE (first, second, largest, smallest, oldest, newest)
-  • Every COMPARISON (more than, less than, between)
-STEP 3 - VERIFY ACCURACY: Cross-check each fact before creating question
-
-## SSC ${exam} TREND ANALYSIS (${trendStartMonth}/${trendStartYear} to ${currentMonth}/${currentYear}):
-Focus on high-weightage topics actually asked in recent SSC exams:
-• Constitutional Articles & Amendments • Government Schemes (launch dates, beneficiaries)
-• Appointments & Awards (with exact dates) • Sports (records, venues, winners)
-• Treaties & International Organizations • Scientific Discoveries & Inventions
-• Historical Events & Anniversaries • Economic Data (GDP, Budget figures)
-• Geography (rivers, mountains, capitals) • Current Affairs from past 1.5 years
-
-## STRICT OUTPUT FORMAT:
-Q1. [Question testing ONE SPECIFIC fact - use EXACT numbers/names/dates from content]
-a) [Option - correct or plausible]
-b) [Option - plausible distractor]
-c) [Option - plausible distractor]  
-d) [Option - plausible distractor]
+OUTPUT FORMAT (follow exactly):
+Q1. [Clear, direct question testing one specific fact]
+a) [Option]
+b) [Option]
+c) [Option]
+d) [Option]
 Correct Answer: [a/b/c/d]
-Explanation: [letter]) [answer] is correct. [State exact fact with all details]. [Context/significance]. [Why other options wrong]. [Memory tip].
+Explanation: [Professional 5-6 sentence explanation following this structure:
+- Start with "The correct answer is [letter]) [answer]."
+- State the key fact/concept clearly with relevant dates, numbers, or names.
+- Provide brief context on why this matters or its significance.
+- Explain why each wrong option is incorrect (one line each).
+- End with a memory tip or mnemonic to remember this fact.]
 
-## QUALITY REQUIREMENTS:
-✓ Each question tests a UNIQUE concept - NO repetition
-✓ EXACT facts only: "Article 370" NOT "Article 371", "1950" NOT "1949"
-✓ All 4 options must be same category (all years, all names, all places)
-✓ SSC style: direct, fact-based, single correct answer
-✓ Simple English for Class 10 students
-✓ Cover ENTIRE content proportionally - beginning, middle, AND end
+RULES:
+- Each question must test a DIFFERENT concept
+- SSC exam style: direct fact-based questions
+- Simple English (Class 10 level)
+- All 4 options must be plausible
+- Cover ALL topics from content proportionally
 
-## CONTENT TO ANALYZE (READ EVERY WORD):
-${content.substring(0, 60000)}
+CONTENT:
+${content.substring(0, 50000)}
 
-Generate EXACTLY ${numQuestions} unique, high-quality MCQs based on PRECISE word-by-word analysis:`;
+Generate ${numQuestions} unique MCQs:`;
 
     try {
       const response = await fetch(getGeminiUrl(apiKey), {
@@ -406,41 +386,29 @@ Generate EXACTLY ${numQuestions} unique, high-quality MCQs based on PRECISE word
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
-            maxOutputTokens: 20000,
-            temperature: 0.25
+            maxOutputTokens: 12000,
+            temperature: 0.2
           }
         })
       });
       
       if (!response.ok) {
-        console.error(`Batch ${batchNum} failed with status ${response.status}`);
         if (retries > 0) return generateMCQsBatch(content, numQuestions, batchNum, totalBatches, retries - 1);
         return [];
       }
       
       const data = await response.json();
       const mcqText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      
-      if (!mcqText.trim()) {
-        console.error(`Batch ${batchNum} returned empty response`);
-        if (retries > 0) return generateMCQsBatch(content, numQuestions, batchNum, totalBatches, retries - 1);
-        return [];
-      }
-      
-      const parsed = parseMCQs(mcqText);
-      console.log(`Batch ${batchNum}/${totalBatches}: Generated ${parsed.length}/${numQuestions} MCQs`);
-      return parsed;
+      return parseMCQs(mcqText);
     } catch (err) {
-      console.error(`Batch ${batchNum} error:`, err);
       if (retries > 0) return generateMCQsBatch(content, numQuestions, batchNum, totalBatches, retries - 1);
       return [];
     }
   };
 
   const generateMCQs = async (content: string, numQuestions: number): Promise<MCQ[]> => {
-    // Request 50% MORE questions to compensate for duplicates and parsing failures
-    const targetQuestions = Math.ceil(numQuestions * 1.5);
-    const MAX_MCQS_PER_BATCH = 35; // Safe limit to prevent MAX_TOKENS truncation
+    // Request 30% MORE questions to compensate for duplicates and parsing failures
+    const targetQuestions = Math.ceil(numQuestions * 1.3);
     
     // Split content by PAGES to ensure EVERY page is covered
     const pages = content.split(/(?=--- Page \d+ ---)/).filter(p => p.trim().length > 50);
@@ -500,20 +468,7 @@ Generate EXACTLY ${numQuestions} unique, high-quality MCQs based on PRECISE word
       const pageMcqs = mcqDistribution[i];
       
       if (currentChunk.length + page.length > MAX_CHUNK_SIZE && currentChunk.length > 0) {
-        // Split batch if MCQs exceed safe limit
-        if (currentChunkMcqs > MAX_MCQS_PER_BATCH) {
-          const splitCount = Math.ceil(currentChunkMcqs / MAX_MCQS_PER_BATCH);
-          const chunkSize = Math.ceil(currentChunk.length / splitCount);
-          const mcqsPerSplit = Math.ceil(currentChunkMcqs / splitCount);
-          for (let s = 0; s < splitCount; s++) {
-            batches.push({ 
-              content: currentChunk.substring(s * chunkSize, (s + 1) * chunkSize), 
-              questions: mcqsPerSplit 
-            });
-          }
-        } else {
-          batches.push({ content: currentChunk, questions: currentChunkMcqs });
-        }
+        batches.push({ content: currentChunk, questions: currentChunkMcqs });
         currentChunk = page;
         currentChunkMcqs = pageMcqs;
       } else {
@@ -523,20 +478,7 @@ Generate EXACTLY ${numQuestions} unique, high-quality MCQs based on PRECISE word
     }
     
     if (currentChunk.trim() && currentChunkMcqs > 0) {
-      // Split final batch if needed
-      if (currentChunkMcqs > MAX_MCQS_PER_BATCH) {
-        const splitCount = Math.ceil(currentChunkMcqs / MAX_MCQS_PER_BATCH);
-        const chunkSize = Math.ceil(currentChunk.length / splitCount);
-        const mcqsPerSplit = Math.ceil(currentChunkMcqs / splitCount);
-        for (let s = 0; s < splitCount; s++) {
-          batches.push({ 
-            content: currentChunk.substring(s * chunkSize, (s + 1) * chunkSize), 
-            questions: mcqsPerSplit 
-          });
-        }
-      } else {
-        batches.push({ content: currentChunk, questions: currentChunkMcqs });
-      }
+      batches.push({ content: currentChunk, questions: currentChunkMcqs });
     }
     
     setStatus(`⚡ Generating ${numQuestions}+ MCQs (${batches.length} parallel batches)...`);
@@ -552,57 +494,20 @@ Generate EXACTLY ${numQuestions} unique, high-quality MCQs based on PRECISE word
     // Remove duplicates to ensure unique questions
     let uniqueMcqs = deduplicateMCQs(allMcqs);
     
-    // UNIQUENESS PRIORITY: Allow 20-30 fewer questions if needed for 100% unique
-    const ACCEPTABLE_DEFICIT = 30;
-    const minAcceptable = Math.max(numQuestions - ACCEPTABLE_DEFICIT, Math.floor(numQuestions * 0.7));
-    
-    // Only retry if we're significantly short (more than acceptable deficit)
-    let retryAttempt = 0;
-    const MAX_RETRIES = 2; // Reduced retries since uniqueness > quantity
-    const contentLength = content.length;
-    
-    while (uniqueMcqs.length < minAcceptable && retryAttempt < MAX_RETRIES) {
-      retryAttempt++;
-      const deficit = minAcceptable - uniqueMcqs.length;
-      const extraNeeded = Math.ceil(deficit * 1.5) + 15; // 50% extra buffer
+    // Quick retry if short - run 2 parallel batches at once
+    if (uniqueMcqs.length < numQuestions) {
+      const deficit = numQuestions - uniqueMcqs.length + 15;
+      setStatus(`⚡ Generating ${deficit} additional MCQs...`);
       
-      setStatus(`⚡ Retry ${retryAttempt}/${MAX_RETRIES}: Generating ${extraNeeded} more unique MCQs...`);
-      console.log(`Retry ${retryAttempt}: Have ${uniqueMcqs.length}, min acceptable: ${minAcceptable}, generating ${extraNeeded} more`);
+      const [batch1, batch2] = await Promise.all([
+        generateMCQsBatch(content.substring(0, 50000), Math.ceil(deficit / 2), 99, 99),
+        generateMCQsBatch(content.substring(20000, 70000), Math.ceil(deficit / 2), 100, 100)
+      ]);
       
-      // Sample different content portions for each retry to get diverse questions
-      const retryBatches: Promise<MCQ[]>[] = [];
-      const batchSize = Math.min(extraNeeded, MAX_MCQS_PER_BATCH);
-      const numRetryBatches = Math.ceil(extraNeeded / batchSize);
-      
-      for (let b = 0; b < numRetryBatches; b++) {
-        // Use different content sections for each batch
-        const startOffset = Math.floor((b / numRetryBatches) * contentLength * 0.5);
-        const endOffset = Math.min(startOffset + 55000, contentLength);
-        const sampleContent = content.substring(startOffset, endOffset);
-        
-        retryBatches.push(generateMCQsBatch(
-          sampleContent, 
-          Math.min(batchSize, extraNeeded - (b * batchSize)), 
-          100 + retryAttempt * 10 + b, 
-          100
-        ));
-      }
-      
-      const retryResults = await Promise.all(retryBatches);
-      const newMcqs = retryResults.flat();
-      
-      uniqueMcqs = deduplicateMCQs([...uniqueMcqs, ...newMcqs]);
-      console.log(`After retry ${retryAttempt}: ${uniqueMcqs.length} unique MCQs`);
+      uniqueMcqs = deduplicateMCQs([...uniqueMcqs, ...batch1, ...batch2]);
     }
     
-    // Log final stats
-    const finalCount = uniqueMcqs.length;
-    const shortBy = numQuestions - finalCount;
-    if (shortBy > 0) {
-      console.log(`Final: ${finalCount} unique MCQs (${shortBy} less than requested ${numQuestions} - within acceptable range for uniqueness)`);
-    }
-    
-    setStatus(`✅ Generated ${finalCount} unique MCQs${shortBy > 0 ? ` (${shortBy} less to ensure uniqueness)` : ''}`);
+    setStatus(`✅ Generated ${uniqueMcqs.length} unique MCQs`);
     
     return uniqueMcqs;
   };
