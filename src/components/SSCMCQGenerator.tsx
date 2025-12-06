@@ -65,23 +65,35 @@ const getKeywordSignature = (q: string): string => {
   return words.join('|');
 };
 
-// Reduced deduplication - only 2 strategies to avoid false positives
+// STRICT deduplication - uniqueness is priority (allow 20-30 fewer if needed)
 const deduplicateMCQs = (mcqs: MCQ[]): MCQ[] => {
   const seenNormalized = new Set<string>();
   const seenFacts = new Set<string>();
+  const seenAnswers = new Set<string>();
+  const seenKeywords = new Set<string>();
   
   return mcqs.filter(mcq => {
     // Strategy 1: Exact normalized text match
     const normalizedKey = normalizeQuestion(mcq.question);
     if (seenNormalized.has(normalizedKey)) return false;
     
-    // Strategy 2: Same key facts with higher threshold (20 chars)
+    // Strategy 2: Same key facts (numbers + key words)
     const factsKey = extractKeyFacts(mcq.question);
-    if (factsKey.length > 20 && seenFacts.has(factsKey)) return false;
+    if (factsKey.length > 15 && seenFacts.has(factsKey)) return false;
+    
+    // Strategy 3: Same correct answer + topic (catches rephrased questions)
+    const answerSig = getAnswerSignature(mcq);
+    if (answerSig.length > 8 && seenAnswers.has(answerSig)) return false;
+    
+    // Strategy 4: Same distinctive keywords (catches semantic duplicates)
+    const keywordSig = getKeywordSignature(mcq.question);
+    if (keywordSig.length > 12 && seenKeywords.has(keywordSig)) return false;
     
     // Mark as seen
     seenNormalized.add(normalizedKey);
-    if (factsKey.length > 20) seenFacts.add(factsKey);
+    if (factsKey.length > 15) seenFacts.add(factsKey);
+    if (answerSig.length > 8) seenAnswers.add(answerSig);
+    if (keywordSig.length > 12) seenKeywords.add(keywordSig);
     
     return true;
   });
@@ -540,18 +552,22 @@ Generate EXACTLY ${numQuestions} unique, high-quality MCQs based on PRECISE word
     // Remove duplicates to ensure unique questions
     let uniqueMcqs = deduplicateMCQs(allMcqs);
     
-    // Retry loop until target is met (max 3 attempts)
+    // UNIQUENESS PRIORITY: Allow 20-30 fewer questions if needed for 100% unique
+    const ACCEPTABLE_DEFICIT = 30;
+    const minAcceptable = Math.max(numQuestions - ACCEPTABLE_DEFICIT, Math.floor(numQuestions * 0.7));
+    
+    // Only retry if we're significantly short (more than acceptable deficit)
     let retryAttempt = 0;
-    const MAX_RETRIES = 3;
+    const MAX_RETRIES = 2; // Reduced retries since uniqueness > quantity
     const contentLength = content.length;
     
-    while (uniqueMcqs.length < numQuestions && retryAttempt < MAX_RETRIES) {
+    while (uniqueMcqs.length < minAcceptable && retryAttempt < MAX_RETRIES) {
       retryAttempt++;
-      const deficit = numQuestions - uniqueMcqs.length;
-      const extraNeeded = Math.ceil(deficit * 1.3) + 10; // 30% extra + 10 buffer
+      const deficit = minAcceptable - uniqueMcqs.length;
+      const extraNeeded = Math.ceil(deficit * 1.5) + 15; // 50% extra buffer
       
-      setStatus(`⚡ Retry ${retryAttempt}/${MAX_RETRIES}: Generating ${extraNeeded} additional MCQs (need ${deficit} more)...`);
-      console.log(`Retry ${retryAttempt}: Have ${uniqueMcqs.length}, need ${numQuestions}, generating ${extraNeeded} more`);
+      setStatus(`⚡ Retry ${retryAttempt}/${MAX_RETRIES}: Generating ${extraNeeded} more unique MCQs...`);
+      console.log(`Retry ${retryAttempt}: Have ${uniqueMcqs.length}, min acceptable: ${minAcceptable}, generating ${extraNeeded} more`);
       
       // Sample different content portions for each retry to get diverse questions
       const retryBatches: Promise<MCQ[]>[] = [];
@@ -579,11 +595,14 @@ Generate EXACTLY ${numQuestions} unique, high-quality MCQs based on PRECISE word
       console.log(`After retry ${retryAttempt}: ${uniqueMcqs.length} unique MCQs`);
     }
     
-    if (uniqueMcqs.length < numQuestions) {
-      console.warn(`Warning: Could only generate ${uniqueMcqs.length}/${numQuestions} MCQs after ${MAX_RETRIES} retries`);
+    // Log final stats
+    const finalCount = uniqueMcqs.length;
+    const shortBy = numQuestions - finalCount;
+    if (shortBy > 0) {
+      console.log(`Final: ${finalCount} unique MCQs (${shortBy} less than requested ${numQuestions} - within acceptable range for uniqueness)`);
     }
     
-    setStatus(`✅ Generated ${uniqueMcqs.length} unique MCQs (requested: ${numQuestions})`);
+    setStatus(`✅ Generated ${finalCount} unique MCQs${shortBy > 0 ? ` (${shortBy} less to ensure uniqueness)` : ''}`);
     
     return uniqueMcqs;
   };
