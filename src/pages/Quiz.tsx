@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo, useCallback, memo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, RotateCcw, Home, Clock, CheckCircle2, XCircle, BookOpen } from 'lucide-react';
+import { ChevronLeft, ChevronRight, RotateCcw, Home, Clock, CheckCircle2, XCircle, Circle, BookOpen } from 'lucide-react';
 
 interface MCQ {
   question: string;
@@ -29,82 +29,73 @@ const Quiz = () => {
     }
   }, [location, navigate]);
 
-  // Timer - optimized
+  // Timer
   useEffect(() => {
-    if (quizCompleted || mcqs.length === 0) return;
-    const timer = setInterval(() => setElapsedTime(t => t + 1), 1000);
-    return () => clearInterval(timer);
+    if (!quizCompleted && mcqs.length > 0) {
+      const timer = setInterval(() => setElapsedTime(t => t + 1), 1000);
+      return () => clearInterval(timer);
+    }
   }, [quizCompleted, mcqs.length]);
 
-  const formatTime = useCallback((seconds: number) => {
+  const formatTime = (seconds: number) => {
     const hrs = Math.floor(seconds / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
     return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  }, []);
+  };
 
   const currentMCQ = mcqs[currentIndex];
   
-  // Memoize computed stats
-  const stats = useMemo(() => {
-    let correct = 0, wrong = 0, attempted = 0, skipped = 0, notVisited = 0;
-    for (const q of mcqs) {
-      if (q.selected === null) notVisited++;
-      else if (q.selected === '') skipped++;
-      else if (q.selected === q.correct) { correct++; attempted++; }
-      else { wrong++; attempted++; }
-    }
-    return { correct, wrong, attempted, skipped, notVisited };
-  }, [mcqs]);
-  
-  const { correct: correctCount, wrong: wrongCount, attempted: attemptedCount, skipped: skippedCount, notVisited: notVisitedCount } = stats;
+  const correctCount = mcqs.filter(q => q.selected === q.correct).length;
+  const wrongCount = mcqs.filter(q => q.selected !== null && q.selected !== '' && q.selected !== q.correct).length;
+  const attemptedCount = mcqs.filter(q => q.selected !== null && q.selected !== '').length;
+  const skippedCount = mcqs.filter(q => q.selected === '').length;
+  const notVisitedCount = mcqs.filter(q => q.selected === null).length;
 
-  const selectAnswer = useCallback((letter: string) => {
+  const selectAnswer = (letter: string) => {
     if (showResult) return;
-    setMcqs(prev => {
-      const newMcqs = [...prev];
-      newMcqs[currentIndex] = { ...newMcqs[currentIndex], selected: letter };
-      return newMcqs;
-    });
+    
+    setMcqs(prev => prev.map((q, idx) => 
+      idx === currentIndex ? { ...q, selected: letter } : q
+    ));
     setShowResult(true);
-  }, [showResult, currentIndex]);
+  };
 
-  const nextQuestion = useCallback(() => {
+  const nextQuestion = () => {
     if (currentIndex < mcqs.length - 1) {
-      const nextIdx = currentIndex + 1;
-      setCurrentIndex(nextIdx);
-      setShowResult(mcqs[nextIdx]?.selected !== null);
+      setCurrentIndex(prev => prev + 1);
+      setShowResult(mcqs[currentIndex + 1]?.selected !== null);
     } else {
       setQuizCompleted(true);
     }
-  }, [currentIndex, mcqs]);
+  };
 
-  const prevQuestion = useCallback(() => {
+  const prevQuestion = () => {
     if (currentIndex > 0) {
-      const prevIdx = currentIndex - 1;
-      setCurrentIndex(prevIdx);
-      setShowResult(mcqs[prevIdx]?.selected !== null);
+      setCurrentIndex(prev => prev - 1);
+      setShowResult(mcqs[currentIndex - 1]?.selected !== null);
     }
-  }, [currentIndex, mcqs]);
+  };
 
-  const goToQuestion = useCallback((idx: number) => {
+  const goToQuestion = (idx: number) => {
     setCurrentIndex(idx);
-    setShowResult(mcqs[idx]?.selected !== null);
-  }, [mcqs]);
+    setShowResult(mcqs[idx].selected !== null);
+  };
 
-  const restartQuiz = useCallback(() => {
+  const restartQuiz = () => {
     setMcqs(prev => prev.map(q => ({ ...q, selected: null })));
     setCurrentIndex(0);
     setShowResult(false);
     setQuizCompleted(false);
     setElapsedTime(0);
-  }, []);
+  };
 
-  const getQuestionStatus = useCallback((q: MCQ) => {
+  const getQuestionStatus = (q: MCQ) => {
     if (q.selected === null) return 'not-visited';
     if (q.selected === '') return 'skipped';
-    return q.selected === q.correct ? 'correct' : 'wrong';
-  }, []);
+    if (q.selected === q.correct) return 'correct';
+    return 'wrong';
+  };
 
   if (mcqs.length === 0) {
     return (
@@ -494,4 +485,4 @@ const Quiz = () => {
   );
 };
 
-export default memo(Quiz);
+export default Quiz;

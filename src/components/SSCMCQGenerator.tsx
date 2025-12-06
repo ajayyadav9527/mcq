@@ -35,66 +35,33 @@ const GEMINI_API_KEYS = [
   "AIzaSyAzR-Ege3fmjAWp1f6WCrN_YnJOUVJEM-U"
 ];
 
-// Helper to normalize question text for comparison
+// Helper to normalize question text for comparison - multiple strategies
 const normalizeQuestion = (q: string): string => 
-  q.toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 200);
+  q.toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 150);
 
-// Extract key facts: numbers, years, names for semantic matching
+// Extract key facts from question for semantic matching
 const extractKeyFacts = (q: string): string => {
   const normalized = q.toLowerCase();
-  const numbers = (normalized.match(/\d+/g) || []).join('-');
-  const words = normalized.split(/\s+/).filter(w => w.length > 5).slice(0, 6).sort().join('');
-  return numbers + '|' + words;
+  // Extract numbers, dates, proper nouns
+  const numbers = (normalized.match(/\d+/g) || []).join('');
+  const words = normalized.split(/\s+/).filter(w => w.length > 4).slice(0, 8).join('');
+  return numbers + words;
 };
 
-// Extract answer signature: correct answer + key topic words
-const getAnswerSignature = (mcq: MCQ): string => {
-  const correctOpt = mcq.options.find(o => o.toLowerCase().startsWith(mcq.correct + ')')) || '';
-  const answerText = correctOpt.replace(/^[a-d]\)\s*/i, '').toLowerCase().replace(/[^a-z0-9]/g, '');
-  return mcq.correct + ':' + answerText.substring(0, 50);
-};
-
-// Extract distinctive keywords from question
-const getKeywordSignature = (q: string): string => {
-  const words = q.toLowerCase()
-    .replace(/[^a-z\s]/g, '')
-    .split(/\s+/)
-    .filter(w => w.length > 4 && !['which', 'following', 'among', 'about', 'these', 'related', 'given', 'statement'].includes(w))
-    .sort()
-    .slice(0, 5);
-  return words.join('|');
-};
-
-// Robust duplicate removal with multiple strategies - prioritize uniqueness
+// Fast duplicate removal using normalized text and key facts
 const deduplicateMCQs = (mcqs: MCQ[]): MCQ[] => {
-  const seenNormalized = new Set<string>();
+  const seen = new Set<string>();
   const seenFacts = new Set<string>();
-  const seenAnswers = new Set<string>();
-  const seenKeywords = new Set<string>();
   
   return mcqs.filter(mcq => {
-    // Strategy 1: Exact normalized text match
-    const normalizedKey = normalizeQuestion(mcq.question);
-    if (seenNormalized.has(normalizedKey)) return false;
+    const key = normalizeQuestion(mcq.question);
+    if (seen.has(key)) return false;
     
-    // Strategy 2: Same key facts (numbers, key words)
-    const factsKey = extractKeyFacts(mcq.question);
-    if (factsKey.length > 12 && seenFacts.has(factsKey)) return false;
+    const facts = extractKeyFacts(mcq.question);
+    if (facts.length > 8 && seenFacts.has(facts)) return false;
     
-    // Strategy 3: Same correct answer text (catches rephrased questions)
-    const answerSig = getAnswerSignature(mcq);
-    if (answerSig.length > 10 && seenAnswers.has(answerSig)) return false;
-    
-    // Strategy 4: Same distinctive keywords (catches semantic duplicates)
-    const keywordSig = getKeywordSignature(mcq.question);
-    if (keywordSig.length > 15 && seenKeywords.has(keywordSig)) return false;
-    
-    // Mark as seen
-    seenNormalized.add(normalizedKey);
-    if (factsKey.length > 12) seenFacts.add(factsKey);
-    if (answerSig.length > 10) seenAnswers.add(answerSig);
-    if (keywordSig.length > 15) seenKeywords.add(keywordSig);
-    
+    seen.add(key);
+    if (facts.length > 8) seenFacts.add(facts);
     return true;
   });
 };
@@ -345,39 +312,79 @@ const SSCMCQGenerator = () => {
     return allContent.filter(Boolean).join('\n');
   };
 
-  const generateMCQsBatch = async (content: string, numQuestions: number, batchNum: number, totalBatches: number, retries = 1): Promise<MCQ[]> => {
+  const generateMCQsBatch = async (content: string, numQuestions: number, batchNum: number, totalBatches: number, retries = 2): Promise<MCQ[]> => {
     const apiKey = getNextApiKey();
     
-    const currentYear = new Date().getFullYear();
-    const pastYear = currentYear - 1;
+    // Calculate dynamic date range (current date to 1.5 years back)
+    const currentDate = new Date();
+    const pastDate = new Date();
+    pastDate.setMonth(pastDate.getMonth() - 18); // 1.5 years = 18 months
     
-    const prompt = `Create EXACTLY ${numQuestions} SSC ${exam} MCQs from this content. Focus: ${pastYear}-${currentYear} exam trends.
+    const formatDate = (date: Date) => {
+      const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+      return `${months[date.getMonth()]} ${date.getFullYear()}`;
+    };
+    
+    const currentDateStr = formatDate(currentDate);
+    const pastDateStr = formatDate(pastDate);
+    const currentYear = currentDate.getFullYear();
+    const pastYear = pastDate.getFullYear();
+    
+    const prompt = `You are India's TOP ${exam} exam coach with 20+ years experience. Current Date: ${currentDateStr}.
+Your task: Create EXACTLY ${numQuestions} PERFECT MCQs that cover ALL concepts from this content.
 
-OUTPUT FORMAT (follow exactly):
-Q1. [Clear, direct question testing one specific fact]
-a) [Option]
-b) [Option]
-c) [Option]
-d) [Option]
-Correct Answer: [a/b/c/d]
-Explanation: [Professional 5-6 sentence explanation following this structure:
-- Start with "The correct answer is [letter]) [answer]."
-- State the key fact/concept clearly with relevant dates, numbers, or names.
-- Provide brief context on why this matters or its significance.
-- Explain why each wrong option is incorrect (one line each).
-- End with a memory tip or mnemonic to remember this fact.]
+🔥 SSC EXAM TREND PRIORITY (${pastDateStr} - ${currentDateStr}):
+Focus on topics/patterns ACTUALLY ASKED in recent ${exam} exams during this period:
+- HIGH WEIGHTAGE: Indian Polity (Articles, Amendments, Fundamental Rights/Duties), Economy (Budget ${currentYear}-${currentYear + 1}, GDP, Inflation), Current Affairs (Recent summits, International events, Sports)
+- FREQUENTLY ASKED: Constitutional bodies, Government schemes (PM schemes, welfare programs), Important dates & events, First in India/World
+- TRENDING TOPICS: Digital India initiatives, Environmental policies, International summits, Awards & honors, Scientific developments
+- EXAM PATTERNS: Direct fact-based questions, "Which of the following" match-the-pair, Chronological ordering, "Consider the statements" type
+- If content has topics from above categories, create MORE questions on them
 
-RULES:
-- Each question must test a DIFFERENT concept
-- SSC exam style: direct fact-based questions
-- Simple English (Class 10 level)
-- All 4 options must be plausible
-- Cover ALL topics from content proportionally
+📋 STRICT OUTPUT FORMAT (follow EXACTLY):
+Q1. [Direct, clear question testing a specific fact/concept - match SSC exam style]
+a) [Option - plausible but wrong OR correct]
+b) [Option - plausible but wrong OR correct]
+c) [Option - plausible but wrong OR correct]
+d) [Option - plausible but wrong OR correct]
+Correct Answer: [single letter: a, b, c, or d]
+Explanation: [Professional 6-8 sentence explanation - see format below]
 
-CONTENT:
-${content.substring(0, 50000)}
+📝 EXPLANATION STRUCTURE (MANDATORY - follow this order):
+1. ANSWER: Start with "The correct answer is [option letter]) [answer text]."
+2. WHY CORRECT: Explain the core concept/fact in 1-2 simple sentences. Use everyday analogies if helpful.
+3. KEY FACTS: Include specific dates, numbers, names, articles, or data that students must remember.
+4. CONTEXT: Brief background - why this topic matters, historical significance, or real-world application.
+5. WRONG OPTIONS: Briefly explain why each wrong option is incorrect (1 line each).
+6. MEMORY TIP: Give a trick, mnemonic, or association to remember this fact easily.
+7. EXAM TIP: Mention if this topic appeared in recent SSC exams (${pastYear}-${currentYear}) or is expected.
 
-Generate ${numQuestions} unique MCQs:`;
+🎯 CONTENT COVERAGE RULES:
+- Extract EVERY important fact, date, name, article, scheme, place from the content
+- Create questions on ALL topics/sections present - don't skip any part
+- PRIORITIZE topics matching recent SSC trends (${pastDateStr} - ${currentDateStr})
+- Include questions on: definitions, dates, names, places, numbers, comparisons, processes
+- Each question must test a DIFFERENT concept - no repetition
+- Cover ALL pages/sections proportionally
+
+✅ QUALITY STANDARDS:
+- 100% factually accurate - verify before including
+- Questions must match actual SSC exam difficulty and style
+- All 4 options must be plausible (avoid obviously wrong options)
+- Only ONE correct answer per question
+- Use simple English that a Class 10 student can understand
+- Explanations should teach the concept, not just state the answer
+
+❌ AVOID:
+- Vague questions like "Which of the following is true?"
+- Options that are too similar or confusing
+- Outdated information (pre-2020) unless historically important
+- Missing any section of the provided content
+
+CONTENT TO COVER (extract MCQs from ALL parts, prioritize trending SSC topics):
+${content.substring(0, 70000)}
+
+Generate EXACTLY ${numQuestions} high-quality MCQs covering ALL concepts with SSC ${pastYear}-${currentYear} exam focus:`;
 
     try {
       const response = await fetch(getGeminiUrl(apiKey), {
@@ -386,20 +393,30 @@ Generate ${numQuestions} unique MCQs:`;
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
-            maxOutputTokens: 12000,
-            temperature: 0.2
+            maxOutputTokens: 16000,
+            temperature: 0.3
           }
         })
       });
       
       if (!response.ok) {
-        if (retries > 0) return generateMCQsBatch(content, numQuestions, batchNum, totalBatches, retries - 1);
+        if (retries > 0) {
+          await new Promise(r => setTimeout(r, 100));
+          return generateMCQsBatch(content, numQuestions, batchNum, totalBatches, retries - 1);
+        }
         return [];
       }
       
       const data = await response.json();
       const mcqText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      return parseMCQs(mcqText);
+      const mcqs = parseMCQs(mcqText);
+      
+      // Only retry if got very few MCQs (less than 60%)
+      if (mcqs.length < numQuestions * 0.6 && retries > 0) {
+        return generateMCQsBatch(content, numQuestions, batchNum, totalBatches, retries - 1);
+      }
+      
+      return mcqs;
     } catch (err) {
       if (retries > 0) return generateMCQsBatch(content, numQuestions, batchNum, totalBatches, retries - 1);
       return [];
@@ -457,8 +474,8 @@ Generate ${numQuestions} unique MCQs:`;
       }
     }
     
-    // Group pages into smaller chunks for maximum parallelism (max 30k chars)
-    const MAX_CHUNK_SIZE = 30000;
+    // Group pages into smaller chunks for more parallel API calls (max 40k chars)
+    const MAX_CHUNK_SIZE = 40000;
     const batches: { content: string; questions: number }[] = [];
     let currentChunk = '';
     let currentChunkMcqs = 0;
