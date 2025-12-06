@@ -348,36 +348,56 @@ const SSCMCQGenerator = () => {
   const generateMCQsBatch = async (content: string, numQuestions: number, batchNum: number, totalBatches: number, retries = 1): Promise<MCQ[]> => {
     const apiKey = getNextApiKey();
     
-    const currentYear = new Date().getFullYear();
-    const pastYear = currentYear - 1;
+    // Dynamic 1.5 year trend calculation from current date
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear();
+    const currentMonth = currentDate.getMonth() + 1;
+    const trendStartYear = currentMonth >= 7 ? currentYear - 1 : currentYear - 2;
+    const trendStartMonth = currentMonth >= 7 ? currentMonth - 6 : currentMonth + 6;
     
-    const prompt = `Create EXACTLY ${numQuestions} SSC ${exam} MCQs from this content. Focus: ${pastYear}-${currentYear} exam trends.
+    const prompt = `You are an SSC exam expert. THOROUGHLY ANALYZE every word, fact, date, name, number, and detail in the content below. Create EXACTLY ${numQuestions} MCQs for SSC ${exam}.
 
-OUTPUT FORMAT (follow exactly):
-Q1. [Clear, direct question testing one specific fact]
-a) [Option]
-b) [Option]
-c) [Option]
-d) [Option]
+CRITICAL ANALYSIS INSTRUCTIONS:
+1. READ EVERY WORD CAREFULLY - extract ALL factual information
+2. Identify: dates, years, numbers, percentages, names, places, articles, amendments, schemes, acts, committees, organizations
+3. Note relationships: who did what, when, where, why
+4. Focus on SSC exam trends from ${trendStartMonth}/${trendStartYear} to ${currentMonth}/${currentYear} (last 1.5 years)
+
+SSC ${exam} RECENT TREND FOCUS (${trendStartYear}-${currentYear}):
+- Constitutional Articles & Amendments (especially recent ones)
+- Government schemes launched/modified recently
+- Important appointments & awards
+- Sports events, championships, records
+- International treaties & organizations
+- Scientific discoveries & technology updates
+- Historical dates & anniversaries
+- Economic data: GDP, budget, policies
+- Geography: rivers, mountains, boundaries, states
+- Current affairs tested in recent SSC papers
+
+OUTPUT FORMAT (STRICT):
+Q1. [Precise question testing ONE specific fact - include exact names/dates/numbers from content]
+a) [Correct or plausible option]
+b) [Plausible distractor]
+c) [Plausible distractor]
+d) [Plausible distractor]
 Correct Answer: [a/b/c/d]
-Explanation: [Professional 5-6 sentence explanation following this structure:
-- Start with "The correct answer is [letter]) [answer]."
-- State the key fact/concept clearly with relevant dates, numbers, or names.
-- Provide brief context on why this matters or its significance.
-- Explain why each wrong option is incorrect (one line each).
-- End with a memory tip or mnemonic to remember this fact.]
+Explanation: The correct answer is [letter]) [answer]. [State the exact fact with all relevant details - dates, numbers, names]. [Explain the significance/context in 1-2 sentences]. [Why option X is wrong: brief reason]. [Why option Y is wrong: brief reason]. [Why option Z is wrong: brief reason]. [Memory tip: mnemonic or association to remember this fact].
 
-RULES:
-- Each question must test a DIFFERENT concept
-- SSC exam style: direct fact-based questions
-- Simple English (Class 10 level)
-- All 4 options must be plausible
-- Cover ALL topics from content proportionally
+QUALITY RULES:
+- EVERY question must test a DIFFERENT concept from the content
+- Extract EXACT facts: if content says "Article 370" don't write "Article 371"
+- If content mentions "1950", question must use "1950" not approximate
+- All 4 options must be plausible (similar category/type)
+- Distractors should be related but clearly wrong
+- SSC exam style: direct, fact-based, single correct answer
+- Simple English suitable for Class 10 students
+- Cover ALL sections of content proportionally
 
-CONTENT:
-${content.substring(0, 50000)}
+CONTENT TO ANALYZE (read every detail):
+${content.substring(0, 55000)}
 
-Generate ${numQuestions} unique MCQs:`;
+Generate EXACTLY ${numQuestions} high-quality, unique MCQs based on PRECISE analysis of above content:`;
 
     try {
       const response = await fetch(getGeminiUrl(apiKey), {
@@ -386,21 +406,32 @@ Generate ${numQuestions} unique MCQs:`;
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
-            maxOutputTokens: 12000,
-            temperature: 0.2
+            maxOutputTokens: 14000,
+            temperature: 0.25
           }
         })
       });
       
       if (!response.ok) {
+        console.error(`Batch ${batchNum} failed with status ${response.status}`);
         if (retries > 0) return generateMCQsBatch(content, numQuestions, batchNum, totalBatches, retries - 1);
         return [];
       }
       
       const data = await response.json();
       const mcqText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      return parseMCQs(mcqText);
+      
+      if (!mcqText.trim()) {
+        console.error(`Batch ${batchNum} returned empty response`);
+        if (retries > 0) return generateMCQsBatch(content, numQuestions, batchNum, totalBatches, retries - 1);
+        return [];
+      }
+      
+      const parsed = parseMCQs(mcqText);
+      console.log(`Batch ${batchNum}/${totalBatches}: Generated ${parsed.length}/${numQuestions} MCQs`);
+      return parsed;
     } catch (err) {
+      console.error(`Batch ${batchNum} error:`, err);
       if (retries > 0) return generateMCQsBatch(content, numQuestions, batchNum, totalBatches, retries - 1);
       return [];
     }
