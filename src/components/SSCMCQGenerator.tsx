@@ -541,42 +541,55 @@ const SSCMCQGenerator = () => {
     // Safe content extraction
     const safeContent = String(content || '').substring(0, 50000);
     
-    const prompt = `You are an expert MCQ generator for ${exam} competitive exams.
+    // Get current date for exam trends
+    const currentDate = new Date();
+    const trendStartDate = new Date(currentDate.getFullYear() - 1, currentDate.getMonth() - 6, 1);
+    const trendPeriod = `${trendStartDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })} to ${currentDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`;
 
-CRITICAL INSTRUCTIONS:
-1. Generate EXACTLY ${numQuestions} MCQs from the PDF content below
-2. Use ONLY information explicitly found in the given content - NO external knowledge
-3. Each question must be unique, non-repetitive, and test a DIFFERENT concept
-4. 100% accuracy required - if any detail is unclear, skip that topic
-5. Every MCQ must have exactly 4 options: A, B, C, D
-6. Provide Testbook-style explanation directly from the PDF content
+    const prompt = `You are a SENIOR ${exam} exam paper setter with 20+ years experience. Your MCQs are used in actual SSC exams.
 
-STRICT OUTPUT FORMAT (follow exactly):
+🎯 MISSION: Generate ${numQuestions} EXAM-QUALITY MCQs that are 100% ACCURATE and VERIFIABLE from the content below.
 
-Q1. [Question text based ONLY on PDF content]
-A. [Option]
-B. [Option]
-C. [Option]
-D. [Option]
+📋 QUALITY STANDARDS (NON-NEGOTIABLE):
+1. ✅ 100% FACTUAL ACCURACY - Every fact must be directly from the PDF content
+2. ✅ ZERO ASSUMPTIONS - Never guess, assume, or use external knowledge
+3. ✅ UNIQUE CONCEPTS - Each question tests a completely different concept
+4. ✅ SSC EXAM PATTERN - Match recent ${exam} question styles from ${trendPeriod}
+5. ✅ VERIFIABLE ANSWERS - Each correct answer must be provable from the PDF text
+
+🎓 SSC EXAM TRENDS TO FOCUS (${trendPeriod}):
+- Important dates, years, and historical events
+- Constitutional Articles, Amendments, and Schedules
+- Government schemes with launch dates and objectives
+- Important committees, commissions, and their recommendations
+- Headquarters, capitals, and geographical facts
+- Scientific discoveries, inventions, and their inventors
+- Economic data, indices, and rankings
+
+📝 STRICT OUTPUT FORMAT:
+
+Q1. [Clear, exam-style question testing ONE specific fact from PDF]
+A. [Plausible option]
+B. [Plausible option]
+C. [Plausible option]
+D. [Plausible option]
 Correct Answer: [A/B/C/D]
-Explanation (Testbook Style): [Short, clear reasoning based ONLY on PDF content, explaining why the answer is correct and why other options are incorrect]
+Explanation (Testbook Style): [5-8 sentences: 1) State the correct answer with proof from PDF 2) Explain the concept simply 3) Why each wrong option is incorrect 4) Memory tip or exam relevance 5) Related facts from the PDF]
 
 Q2. [Next question...]
 
-(Continue until exactly ${numQuestions} questions are completed)
+⚠️ CRITICAL RULES:
+- ONLY use facts explicitly stated in the PDF content below
+- If ANY detail is unclear or ambiguous, SKIP that topic entirely
+- Every MCQ must have EXACTLY 4 options with only ONE correct answer
+- Use simple English suitable for Class 10 students
+- Include specific names, dates, numbers exactly as written in PDF
+- Never generate questions about topics not covered in the content
 
-RULES:
-- Questions must be created STRICTLY from the content available in the PDF only
-- Do NOT add or assume anything externally
-- Each question tests a DIFFERENT concept from the content
-- Simple English suitable for Class 10 students
-- Only ONE correct answer per question
-- If content is insufficient for ${numQuestions} questions, generate as many as possible
-
-PDF CONTENT (${pageInfo}):
+📄 PDF CONTENT (${pageInfo}):
 ${safeContent}
 
-Generate EXACTLY ${numQuestions} MCQs now:`;
+Generate EXACTLY ${numQuestions} premium-quality MCQs now:`;
 
     // Try up to 10 different API keys
     for (let attempt = 0; attempt < GEMINI_API_KEYS.length; attempt++) {
@@ -599,8 +612,10 @@ Generate EXACTLY ${numQuestions} MCQs now:`;
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: {
-              maxOutputTokens: Math.min(numQuestions * 1000, 20000),
-              temperature: 0.1 // Lower temperature for more accuracy
+              maxOutputTokens: Math.min(numQuestions * 1200, 24000),
+              temperature: 0.05, // Ultra-low temperature for maximum accuracy
+              topP: 0.9,
+              topK: 20
             }
           })
         });
