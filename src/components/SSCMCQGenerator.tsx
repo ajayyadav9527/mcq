@@ -227,7 +227,7 @@ const SSCMCQGenerator = () => {
 
   const extractPageImage = async (pdf: any, pageNum: number): Promise<string> => {
     const page = await pdf.getPage(pageNum);
-    const scale = 1.0; // Reduced for faster processing
+    const scale = 1.5; // Better quality for OCR
     const viewport = page.getViewport({ scale });
     
     const canvas = document.createElement('canvas');
@@ -237,20 +237,25 @@ const SSCMCQGenerator = () => {
     
     await page.render({ canvasContext: context, viewport }).promise;
     
-    const imageData = canvas.toDataURL('image/jpeg', 0.25); // Slightly lower quality for speed
+    const imageData = canvas.toDataURL('image/jpeg', 0.6); // Better quality for OCR
     canvas.remove();
     
     return imageData.split(',')[1];
   };
 
-  const processPageWithOCR = async (pdf: any, pageNum: number): Promise<string | null> => {
+  const processPageWithOCR = async (pdf: any, pageNum: number, retryCount = 0): Promise<string | null> => {
     try {
       const base64Data = await extractPageImage(pdf, pageNum);
-      const { key: apiKey } = getNextApiKey();
+      const keyIndex = (pageNum + retryCount) % GEMINI_API_KEYS.length;
+      const apiKey = GEMINI_API_KEYS[keyIndex];
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
       
       const response = await fetch(getGeminiUrl(apiKey), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           contents: [{
             parts: [
@@ -260,21 +265,33 @@ const SSCMCQGenerator = () => {
                   data: base64Data 
                 }
               },
-              { text: "Extract all text from this image. Return only the extracted text, no preamble or explanation." }
+              { text: "Extract ALL text from this image completely. Return only the extracted text, nothing else." }
             ]
           }],
           generationConfig: {
-            maxOutputTokens: 1500
+            maxOutputTokens: 4000
           }
         })
       });
+      
+      clearTimeout(timeoutId);
       
       if (response.ok) {
         const data = await response.json();
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
         if (text && text.length > 20) return text;
+      } else if (response.status === 429 && retryCount < 2) {
+        // Rate limited - wait and retry with different key
+        await new Promise(r => setTimeout(r, 2000 * (retryCount + 1)));
+        return processPageWithOCR(pdf, pageNum, retryCount + 1);
       }
-    } catch (err) {}
+    } catch (err: any) {
+      if (err.name === 'AbortError' && retryCount < 2) {
+        await new Promise(r => setTimeout(r, 1000));
+        return processPageWithOCR(pdf, pageNum, retryCount + 1);
+      }
+      console.error(`OCR error page ${pageNum}:`, err?.message);
+    }
     return null;
   };
 
@@ -283,35 +300,78 @@ const SSCMCQGenerator = () => {
     const allContent: string[] = [];
     processingRef.current = { startTime: Date.now(), completed: 0 };
     
-    const BATCH_SIZE = 50;
-    const CONCURRENT_LIMIT = 30;
+    // First pass: try text extraction for all pages
+    setStatus(`📄 Extracting text from ${totalPages} pages...`);
+    const textPages: { pageNum: number; text: string | null }[] = [];
     
-    for (let i = 0; i < totalPages; i += BATCH_SIZE) {
-      const batchEnd = Math.min(i + BATCH_SIZE, totalPages);
-      const batchPromises: Promise<string | null>[] = [];
+    for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
+      const text = await extractPageText(pdf, pageNum);
+      textPages.push({ pageNum, text });
+      processingRef.current.completed++;
+      updateProgress(processingRef.current.completed, totalPages * 2);
+    }
+    
+    // Check if we need OCR (most pages have no text)
+    const pagesWithText = textPages.filter(p => p.text !== null).length;
+    const needsOCR = pagesWithText < totalPages * 0.3;
+    
+    if (needsOCR) {
+      setStatus(`🔍 Scanned PDF detected. Running OCR on ${totalPages} pages...`);
       
-      for (let pageNum = i + 1; pageNum <= batchEnd; pageNum++) {
-        const processPage = async (pNum: number): Promise<string | null> => {
-          let text = await extractPageText(pdf, pNum);
-          if (!text) text = await processPageWithOCR(pdf, pNum);
-          
-          processingRef.current.completed++;
-          updateProgress(processingRef.current.completed, totalPages);
-          
-          return text ? `--- Page ${pNum} ---\n${text}\n` : null;
-        };
+      // Process pages sequentially with small delays to avoid rate limiting
+      const CONCURRENT_OCR = 3; // Lower concurrency for OCR
+      
+      for (let i = 0; i < totalPages; i += CONCURRENT_OCR) {
+        const batch: Promise<string | null>[] = [];
         
-        batchPromises.push(processPage(pageNum));
-        
-        if (batchPromises.length >= CONCURRENT_LIMIT || pageNum === batchEnd) {
-          const results = await Promise.all(batchPromises);
-          allContent.push(...results.filter((r): r is string => r !== null));
-          batchPromises.length = 0;
+        for (let j = 0; j < CONCURRENT_OCR && i + j < totalPages; j++) {
+          const pageNum = i + j + 1;
+          const existingText = textPages[i + j]?.text;
+          
+          if (existingText) {
+            batch.push(Promise.resolve(existingText));
+          } else {
+            batch.push(
+              new Promise(async (resolve) => {
+                await new Promise(r => setTimeout(r, j * 500)); // Stagger requests
+                const text = await processPageWithOCR(pdf, pageNum);
+                resolve(text);
+              })
+            );
+          }
         }
+        
+        const results = await Promise.all(batch);
+        
+        for (let j = 0; j < results.length; j++) {
+          const pageNum = i + j + 1;
+          const text = results[j];
+          if (text) {
+            allContent.push(`--- Page ${pageNum} ---\n${text}\n`);
+          }
+          processingRef.current.completed++;
+          updateProgress(processingRef.current.completed, totalPages * 2);
+        }
+        
+        // Delay between batches
+        if (i + CONCURRENT_OCR < totalPages) {
+          await new Promise(r => setTimeout(r, 800));
+        }
+      }
+    } else {
+      // Use extracted text
+      for (const page of textPages) {
+        if (page.text) {
+          allContent.push(`--- Page ${page.pageNum} ---\n${page.text}\n`);
+        }
+        processingRef.current.completed++;
+        updateProgress(processingRef.current.completed, totalPages * 2);
       }
     }
     
-    return allContent.join('\n');
+    const finalContent = allContent.join('\n');
+    console.log(`PDF processed: ${allContent.length} pages with content, ${finalContent.length} chars`);
+    return finalContent;
   };
 
   const generateMCQsBatch = async (content: string, numQuestions: number, batchNum: number, totalBatches: number, apiKeyIndex: number): Promise<MCQ[]> => {
