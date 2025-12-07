@@ -388,7 +388,7 @@ const SSCMCQGenerator = () => {
     return finalContent;
   };
 
-  const generateMCQsBatch = async (content: string, numQuestions: number, batchNum: number, totalBatches: number, setStatusFn: (s: string) => void): Promise<MCQ[]> => {
+  const generateMCQsBatch = async (content: string, numQuestions: number, batchNum: number, totalBatches: number, pageInfo: string, setStatusFn: (s: string) => void): Promise<MCQ[]> => {
     // Guard against invalid inputs
     if (!content || typeof content !== 'string' || content.trim().length < 50) {
       console.log(`Batch ${batchNum}: Skipping - content too short or invalid`);
@@ -400,49 +400,45 @@ const SSCMCQGenerator = () => {
       return [];
     }
 
-    // Dynamic date calculation
-    const currentDate = new Date();
-    const pastDate = new Date();
-    pastDate.setMonth(pastDate.getMonth() - 18);
-    
-    const formatDate = (date: Date) => {
-      const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-      return `${months[date.getMonth()]} ${date.getFullYear()}`;
-    };
-    
-    const currentDateStr = formatDate(currentDate);
-    const pastDateStr = formatDate(pastDate);
-    
     // Safe content extraction
-    const safeContent = String(content || '').substring(0, 45000);
+    const safeContent = String(content || '').substring(0, 50000);
     
-    const prompt = `You are India's TOP ${exam} exam coach. Current Date: ${currentDateStr}.
-Create EXACTLY ${numQuestions} MCQs from the content below.
+    const prompt = `You are an expert MCQ generator for ${exam} competitive exams.
 
-SSC EXAM TREND (${pastDateStr} - ${currentDateStr}):
-Focus on high-weightage topics: Indian Polity, Economy, Current Affairs, Constitutional bodies, Government schemes.
+CRITICAL INSTRUCTIONS:
+1. Generate EXACTLY ${numQuestions} MCQs from the PDF content below
+2. Use ONLY information explicitly found in the given content - NO external knowledge
+3. Each question must be unique, non-repetitive, and test a DIFFERENT concept
+4. 100% accuracy required - if any detail is unclear, skip that topic
+5. Every MCQ must have exactly 4 options: A, B, C, D
+6. Provide Testbook-style explanation directly from the PDF content
 
-FORMAT (follow EXACTLY):
-Q1. [Question]
-a) [Option]
-b) [Option]
-c) [Option]
-d) [Option]
-Correct Answer: [a/b/c/d]
-Explanation: [5-8 sentences explaining why the answer is correct, key facts, and exam relevance]
+STRICT OUTPUT FORMAT (follow exactly):
+
+Q1. [Question text based ONLY on PDF content]
+A. [Option]
+B. [Option]
+C. [Option]
+D. [Option]
+Correct Answer: [A/B/C/D]
+Explanation (Testbook Style): [Short, clear reasoning based ONLY on PDF content, explaining why the answer is correct and why other options are incorrect]
 
 Q2. [Next question...]
 
-RULES:
-- 100% factually accurate
-- Each question tests a DIFFERENT concept
-- Simple English for Class 10 students
-- Only ONE correct answer per question
+(Continue until exactly ${numQuestions} questions are completed)
 
-CONTENT:
+RULES:
+- Questions must be created STRICTLY from the content available in the PDF only
+- Do NOT add or assume anything externally
+- Each question tests a DIFFERENT concept from the content
+- Simple English suitable for Class 10 students
+- Only ONE correct answer per question
+- If content is insufficient for ${numQuestions} questions, generate as many as possible
+
+PDF CONTENT (${pageInfo}):
 ${safeContent}
 
-Generate EXACTLY ${numQuestions} MCQs:`;
+Generate EXACTLY ${numQuestions} MCQs now:`;
 
     // Try up to 10 different API keys
     for (let attempt = 0; attempt < GEMINI_API_KEYS.length; attempt++) {
@@ -453,10 +449,10 @@ Generate EXACTLY ${numQuestions} MCQs:`;
       }
       
       try {
-        setStatusFn(`📝 Batch ${batchNum}/${totalBatches} (using API key ${keyData.index + 1})...`);
+        setStatusFn(`📝 Batch ${batchNum}/${totalBatches} - ${pageInfo} (API key ${keyData.index + 1})...`);
         
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 90000); // 90s timeout
+        const timeoutId = setTimeout(() => controller.abort(), 120000); // 120s timeout for larger batches
         
         const response = await fetch(getGeminiUrl(keyData.key), {
           method: "POST",
@@ -465,8 +461,8 @@ Generate EXACTLY ${numQuestions} MCQs:`;
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: {
-              maxOutputTokens: Math.min(numQuestions * 800, 16000),
-              temperature: 0.2
+              maxOutputTokens: Math.min(numQuestions * 1000, 20000),
+              temperature: 0.1 // Lower temperature for more accuracy
             }
           })
         });
@@ -478,7 +474,6 @@ Generate EXACTLY ${numQuestions} MCQs:`;
           console.log(`Batch ${batchNum} API error: ${status} on key ${keyData.index}`);
           
           if (status === 429) {
-            // Mark this key as rate limited and try next
             markKeyRateLimited(keyData.index);
             await new Promise(r => setTimeout(r, 2000));
             continue;
@@ -565,24 +560,40 @@ Generate EXACTLY ${numQuestions} MCQs:`;
 
     console.log(`Processing ${pages.length} content chunks for ${numQuestions} MCQs`);
 
-    // Use larger batches (15 MCQs each) to reduce API calls
-    const MCQS_PER_BATCH = 15;
-    const targetQuestions = Math.ceil(numQuestions * 1.2); // Request 20% extra
-    const totalBatches = Math.ceil(targetQuestions / MCQS_PER_BATCH);
+    // Calculate MCQs per page for EQUAL WEIGHTAGE
+    const mcqsPerPage = Math.ceil(numQuestions / pages.length);
+    const totalBatches = pages.length;
     
-    // Create batches with content distributed across pages
-    const batches: { content: string; questions: number }[] = [];
+    // Create batches with EQUAL DISTRIBUTION across all pages
+    const batches: { content: string; questions: number; pageInfo: string }[] = [];
+    let remainingQuestions = numQuestions;
     
-    for (let i = 0; i < totalBatches; i++) {
-      const pageIndex = i % pages.length;
-      const page = pages[pageIndex];
-      const questionsForBatch = Math.min(MCQS_PER_BATCH, targetQuestions - (i * MCQS_PER_BATCH));
+    for (let i = 0; i < pages.length && remainingQuestions > 0; i++) {
+      const page = pages[i];
+      const questionsForThisPage = Math.min(mcqsPerPage, remainingQuestions);
       
-      if (page && typeof page === 'string' && page.trim().length > 50 && questionsForBatch > 0) {
+      if (page && typeof page === 'string' && page.trim().length > 50 && questionsForThisPage > 0) {
         batches.push({
           content: page,
-          questions: questionsForBatch
+          questions: questionsForThisPage,
+          pageInfo: `Page ${i + 1} of ${pages.length}`
         });
+        remainingQuestions -= questionsForThisPage;
+      }
+    }
+    
+    // If we still need more questions, distribute remaining across pages
+    if (remainingQuestions > 0) {
+      let pageIdx = 0;
+      while (remainingQuestions > 0 && pageIdx < pages.length) {
+        const extraQuestions = Math.min(5, remainingQuestions);
+        batches.push({
+          content: pages[pageIdx],
+          questions: extraQuestions,
+          pageInfo: `Page ${pageIdx + 1} (extra)`
+        });
+        remainingQuestions -= extraQuestions;
+        pageIdx++;
       }
     }
     
@@ -591,8 +602,8 @@ Generate EXACTLY ${numQuestions} MCQs:`;
       return [];
     }
 
-    console.log(`Created ${batches.length} batches to generate ${numQuestions} MCQs`);
-    setStatus(`⚡ Generating ${numQuestions} MCQs (${batches.length} batches, processing sequentially to avoid rate limits)...`);
+    console.log(`Created ${batches.length} batches with equal page weightage to generate ${numQuestions} MCQs`);
+    setStatus(`⚡ Generating EXACTLY ${numQuestions} MCQs with equal weightage across ${pages.length} pages...`);
 
     const allMcqs: MCQ[] = [];
     const existingQuestions = new Set<string>();
@@ -604,13 +615,13 @@ Generate EXACTLY ${numQuestions} MCQs:`;
       // Check if all API keys are rate limited
       const keyData = getNextApiKey();
       if (!keyData) {
-        setError('⚠️ All API keys are rate limited. Please wait a few minutes and try again with fewer MCQs.');
+        setError('⚠️ All API keys are rate limited. Please wait a few minutes and try again.');
         break;
       }
       
-      setStatus(`📝 Processing batch ${i + 1}/${batches.length} (${allMcqs.length}/${numQuestions} MCQs generated)...`);
+      setStatus(`📝 ${batch.pageInfo}: Generating ${batch.questions} MCQs (${allMcqs.length}/${numQuestions} total)...`);
       
-      const result = await generateMCQsBatch(batch.content, batch.questions, i + 1, batches.length, setStatus);
+      const result = await generateMCQsBatch(batch.content, batch.questions, i + 1, batches.length, batch.pageInfo, setStatus);
       
       // Add unique MCQs with validation
       if (result && Array.isArray(result)) {
@@ -639,16 +650,16 @@ Generate EXACTLY ${numQuestions} MCQs:`;
       
       // Delay between batches to avoid rate limiting (5 seconds)
       if (i < batches.length - 1) {
-        setStatus(`⏳ Waiting 5s before next batch to avoid rate limits...`);
+        setStatus(`⏳ Waiting 5s before next page to avoid rate limits...`);
         await new Promise(r => setTimeout(r, 5000));
       }
     }
 
-    // If still short, try gap-filling with longer delays
+    // If still short, try gap-filling with specific pages
     let attempts = 0;
     const maxAttempts = 3;
     
-    while (allMcqs.length < numQuestions * 0.8 && attempts < maxAttempts && pages.length > 0) {
+    while (allMcqs.length < numQuestions * 0.9 && attempts < maxAttempts && pages.length > 0) {
       const keyData = getNextApiKey();
       if (!keyData) {
         setError('⚠️ All API keys are rate limited. Generated ' + allMcqs.length + ' MCQs.');
@@ -657,16 +668,16 @@ Generate EXACTLY ${numQuestions} MCQs:`;
       
       attempts++;
       const shortfall = numQuestions - allMcqs.length;
-      setStatus(`📊 Gap-filling: need ${shortfall} more (attempt ${attempts}/${maxAttempts})...`);
+      setStatus(`📊 Gap-filling: need ${shortfall} more MCQs (attempt ${attempts}/${maxAttempts})...`);
       
       await new Promise(r => setTimeout(r, 5000)); // Wait before gap-filling
       
-      const pageIndex = Math.floor(Math.random() * pages.length);
+      const pageIndex = attempts % pages.length;
       const page = pages[pageIndex];
       
       if (page && typeof page === 'string' && page.trim().length > 100) {
-        const questionsNeeded = Math.min(MCQS_PER_BATCH, shortfall);
-        const result = await generateMCQsBatch(page, questionsNeeded, attempts, maxAttempts, setStatus);
+        const questionsNeeded = Math.min(10, shortfall);
+        const result = await generateMCQsBatch(page, questionsNeeded, attempts, maxAttempts, `Page ${pageIndex + 1} (gap-fill)`, setStatus);
         
         if (result && Array.isArray(result)) {
           for (const mcq of result) {
@@ -718,20 +729,32 @@ Generate EXACTLY ${numQuestions} MCQs:`;
       
       for (const line of lines) {
         if (!line) continue;
+        
+        // Parse question number and text
         if (/^Q\d+\./.test(line)) {
           mcq.question = line.replace(/^Q\d+\.\s*/, '') || '';
-        } else if (/^[a-d]\)/i.test(line) && mcq.options.length < 4) {
+        } 
+        // Parse options A, B, C, D (both formats: "A." and "a)")
+        else if (/^[A-Da-d][\.\)]/i.test(line) && mcq.options.length < 4) {
           mcq.options.push(line);
-        } else if (/^Correct Answer:/i.test(line)) {
-          const match = line.match(/\b[a-d]\b/i);
+        } 
+        // Parse correct answer
+        else if (/^Correct Answer:/i.test(line)) {
+          const match = line.match(/\b[A-Da-d]\b/i);
           mcq.correct = match ? match[0].toLowerCase() : '';
           inExplanation = false;
-        } else if (/^Explanation:/i.test(line)) {
-          mcq.explanation = line.replace(/^Explanation:\s*/i, '') || '';
+        } 
+        // Parse explanation (both "Explanation:" and "Explanation (Testbook Style):")
+        else if (/^Explanation/i.test(line)) {
+          mcq.explanation = line.replace(/^Explanation[^:]*:\s*/i, '') || '';
           inExplanation = true;
-        } else if (inExplanation) {
+        } 
+        // Continue explanation on next lines
+        else if (inExplanation) {
           mcq.explanation += ' ' + line;
-        } else if (mcq.question && mcq.options.length === 0) {
+        } 
+        // Continue question text if no options yet
+        else if (mcq.question && mcq.options.length === 0) {
           mcq.question += ' ' + line;
         }
       }
@@ -742,7 +765,7 @@ Generate EXACTLY ${numQuestions} MCQs:`;
       }
       
       // Ensure question exists and is valid before adding
-      if (mcq.question && mcq.question.trim().length > 0 && mcq.options.length === 4 && mcq.correct) {
+      if (mcq.question && mcq.question.trim().length > 10 && mcq.options.length === 4 && mcq.correct) {
         questions.push(mcq);
       }
     }
