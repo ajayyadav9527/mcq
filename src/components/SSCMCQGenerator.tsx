@@ -315,8 +315,20 @@ const SSCMCQGenerator = () => {
   };
 
   const generateMCQsBatch = async (content: string, numQuestions: number, batchNum: number, totalBatches: number, assignedKeyIndex: number, retries = 2): Promise<MCQ[]> => {
+    // Guard against undefined/null content
+    if (!content || typeof content !== 'string' || content.trim().length === 0) {
+      console.warn(`Batch ${batchNum}: Empty or invalid content, skipping`);
+      return [];
+    }
+    
+    // Guard against invalid questions count
+    if (!numQuestions || numQuestions < 1) {
+      console.warn(`Batch ${batchNum}: Invalid question count ${numQuestions}, skipping`);
+      return [];
+    }
+    
     // Use assigned key index for balanced distribution
-    const apiKey = GEMINI_API_KEYS[assignedKeyIndex];
+    const apiKey = GEMINI_API_KEYS[assignedKeyIndex % GEMINI_API_KEYS.length];
     
     // Calculate dynamic date range (current date to 1.5 years back)
     const currentDate = new Date();
@@ -332,6 +344,9 @@ const SSCMCQGenerator = () => {
     const pastDateStr = formatDate(pastDate);
     const currentYear = currentDate.getFullYear();
     const pastYear = pastDate.getFullYear();
+    
+    // Safely get content substring
+    const safeContent = (content || '').substring(0, 65000);
     
     const prompt = `You are India's TOP ${exam} exam coach with 20+ years experience. Current Date: ${currentDateStr}.
 Your task: Create EXACTLY ${numQuestions} PERFECT MCQs that cover ALL concepts from this content.
@@ -389,7 +404,7 @@ Explanation: [Professional 6-8 sentence explanation - see format below]
 - Missing any section of the provided content
 
 CONTENT TO COVER (generate MCQs from ALL parts with EQUAL weightage):
-${content.substring(0, 65000)}
+${safeContent}
 
 Generate EXACTLY ${numQuestions} 100% ACCURATE MCQs with VERIFIED correct answers:`;
 
@@ -428,6 +443,7 @@ Generate EXACTLY ${numQuestions} 100% ACCURATE MCQs with VERIFIED correct answer
       
       return mcqs;
     } catch (err) {
+      console.error(`Batch ${batchNum} error:`, err);
       if (retries > 0) {
         const retryKeyIndex = (assignedKeyIndex + 1) % GEMINI_API_KEYS.length;
         return generateMCQsBatch(content, numQuestions, batchNum, totalBatches, retryKeyIndex, retries - 1);
@@ -437,30 +453,51 @@ Generate EXACTLY ${numQuestions} 100% ACCURATE MCQs with VERIFIED correct answer
   };
 
   const generateMCQs = async (content: string, numQuestions: number): Promise<MCQ[]> => {
+    // Guard against invalid input
+    if (!content || typeof content !== 'string' || content.trim().length === 0) {
+      setError('No content extracted from PDF. Please try a different file.');
+      return [];
+    }
+    
     // Reset API usage tracking for balanced load
     resetApiUsage();
     
     // Split content by PAGES to ensure EVERY page is covered EQUALLY
-    let pages = content.split(/(?=--- Page \d+ ---)/).filter(p => p.trim().length > 50);
-    const totalPages = pages.length;
+    let pages = (content || '').split(/(?=--- Page \d+ ---)/).filter(p => p && p.trim().length > 50);
     
-    if (totalPages === 0) {
+    if (pages.length === 0) {
       // Fallback: split by character count if no page markers
       const MAX_CHUNK_SIZE = 55000;
       pages = [];
-      for (let i = 0; i < content.length; i += MAX_CHUNK_SIZE) {
-        pages.push(content.substring(i, i + MAX_CHUNK_SIZE));
+      const safeContent = content || '';
+      for (let i = 0; i < safeContent.length; i += MAX_CHUNK_SIZE) {
+        const chunk = safeContent.substring(i, Math.min(i + MAX_CHUNK_SIZE, safeContent.length));
+        if (chunk && chunk.trim().length > 50) {
+          pages.push(chunk);
+        }
       }
     }
     
+    // Final check - if still no pages, use entire content as one page
+    if (pages.length === 0) {
+      if (content && content.trim().length > 50) {
+        pages = [content];
+      } else {
+        setError('PDF content too short to generate questions.');
+        return [];
+      }
+    }
+    
+    const totalPages = pages.length;
+    
     // EQUAL WEIGHTAGE: Calculate MCQs per page for uniform coverage
-    const baseQuestionsPerPage = Math.floor(numQuestions / pages.length);
-    const extraQuestions = numQuestions % pages.length;
+    const baseQuestionsPerPage = Math.floor(numQuestions / totalPages);
+    const extraQuestions = numQuestions % totalPages;
     
     // Distribute MCQs equally across ALL pages
     const mcqDistribution: number[] = pages.map((_, idx) => {
       // Distribute extra questions to first N pages
-      return baseQuestionsPerPage + (idx < extraQuestions ? 1 : 0);
+      return Math.max(1, baseQuestionsPerPage + (idx < extraQuestions ? 1 : 0));
     });
     
     // Group pages into optimized chunks for parallel API calls
@@ -472,15 +509,15 @@ Generate EXACTLY ${numQuestions} 100% ACCURATE MCQs with VERIFIED correct answer
     let chunkStartPage = 1;
     
     for (let i = 0; i < pages.length; i++) {
-      const page = pages[i];
-      const pageMcqs = mcqDistribution[i];
+      const page = pages[i] || '';
+      const pageMcqs = mcqDistribution[i] || 1;
       
       if (currentChunk.length + page.length > MAX_CHUNK_SIZE && currentChunk.length > 0) {
         // Save current chunk with assigned API key for load balancing
         const keyIndex = batches.length % NUM_API_KEYS;
         batches.push({
           content: currentChunk,
-          questions: currentChunkMcqs,
+          questions: Math.max(1, currentChunkMcqs),
           pageRange: `Pages ${chunkStartPage}-${i}`,
           keyIndex
         });
@@ -494,13 +531,23 @@ Generate EXACTLY ${numQuestions} 100% ACCURATE MCQs with VERIFIED correct answer
     }
     
     // Don't forget last chunk
-    if (currentChunk.trim() && currentChunkMcqs > 0) {
+    if (currentChunk && currentChunk.trim().length > 0 && currentChunkMcqs > 0) {
       const keyIndex = batches.length % NUM_API_KEYS;
       batches.push({
         content: currentChunk,
-        questions: currentChunkMcqs,
+        questions: Math.max(1, currentChunkMcqs),
         pageRange: `Pages ${chunkStartPage}-${pages.length}`,
         keyIndex
+      });
+    }
+    
+    // If no batches were created, create one from the entire content
+    if (batches.length === 0) {
+      batches.push({
+        content: content.substring(0, MAX_CHUNK_SIZE),
+        questions: numQuestions,
+        pageRange: 'All pages',
+        keyIndex: 0
       });
     }
     
@@ -523,40 +570,51 @@ Generate EXACTLY ${numQuestions} 100% ACCURATE MCQs with VERIFIED correct answer
     );
     const results = await Promise.all(batchPromises);
     
-    // Combine all MCQs from all batches
-    const allMcqs = results.flat();
+    // Combine all MCQs from all batches (filter out any undefined/null)
+    const allMcqs = results.flat().filter(mcq => mcq && mcq.question);
     
     // Remove duplicates to ensure unique questions
     const uniqueMcqs = deduplicateMCQs(allMcqs);
     
     // If we got fewer MCQs than requested, generate more to fill the gap
-    if (uniqueMcqs.length < numQuestions * 0.9) {
+    if (uniqueMcqs.length < numQuestions * 0.9 && pages.length > 0) {
       const shortfall = numQuestions - uniqueMcqs.length;
       setStatus(`📊 Generated ${uniqueMcqs.length}/${numQuestions}. Filling gap of ${shortfall} MCQs...`);
       
       // Generate additional MCQs from random page chunks
-      const additionalBatches = Math.ceil(shortfall / 10);
-      const additionalPromises = [];
+      const additionalBatches = Math.min(Math.ceil(shortfall / 10), 10); // Cap at 10 additional batches
+      const additionalPromises: Promise<MCQ[]>[] = [];
       
       for (let i = 0; i < additionalBatches; i++) {
-        const randomPage = pages[Math.floor(Math.random() * pages.length)];
+        // Safely pick a random page
+        const randomIndex = Math.floor(Math.random() * pages.length);
+        const randomPage = pages[randomIndex];
+        
+        // Skip if page is invalid
+        if (!randomPage || randomPage.trim().length < 50) continue;
+        
         const keyIndex = i % NUM_API_KEYS;
+        const questionsToGenerate = Math.min(10, Math.max(1, shortfall - (i * 10)));
+        
         additionalPromises.push(
-          generateMCQsBatch(randomPage, Math.min(10, shortfall), i + 1, additionalBatches, keyIndex)
+          generateMCQsBatch(randomPage, questionsToGenerate, i + 1, additionalBatches, keyIndex)
         );
       }
       
-      const additionalResults = await Promise.all(additionalPromises);
-      const additionalMcqs = additionalResults.flat();
-      
-      // Add non-duplicate additional MCQs
-      const existingQuestions = new Set(uniqueMcqs.map(m => normalizeQuestion(m.question)));
-      for (const mcq of additionalMcqs) {
-        const normalized = normalizeQuestion(mcq.question);
-        if (!existingQuestions.has(normalized)) {
-          uniqueMcqs.push(mcq);
-          existingQuestions.add(normalized);
-          if (uniqueMcqs.length >= numQuestions) break;
+      if (additionalPromises.length > 0) {
+        const additionalResults = await Promise.all(additionalPromises);
+        const additionalMcqs = additionalResults.flat().filter(mcq => mcq && mcq.question);
+        
+        // Add non-duplicate additional MCQs
+        const existingQuestions = new Set(uniqueMcqs.map(m => normalizeQuestion(m.question)));
+        for (const mcq of additionalMcqs) {
+          if (!mcq || !mcq.question) continue;
+          const normalized = normalizeQuestion(mcq.question);
+          if (normalized && !existingQuestions.has(normalized)) {
+            uniqueMcqs.push(mcq);
+            existingQuestions.add(normalized);
+            if (uniqueMcqs.length >= numQuestions) break;
+          }
         }
       }
     }
