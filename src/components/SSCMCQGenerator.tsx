@@ -36,15 +36,19 @@ const GEMINI_API_KEYS = [
 ];
 
 // Helper to normalize question text for comparison
-const normalizeQuestion = (q: string): string => 
-  (q || '').toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 100);
+const normalizeQuestion = (q: string | undefined | null): string => {
+  if (!q || typeof q !== 'string') return '';
+  return q.toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 100);
+};
 
 // Remove duplicate questions
 const deduplicateMCQs = (mcqs: MCQ[]): MCQ[] => {
+  if (!mcqs || !Array.isArray(mcqs)) return [];
   const seen = new Set<string>();
   return mcqs.filter(mcq => {
+    if (!mcq || !mcq.question) return false;
     const key = normalizeQuestion(mcq.question);
-    if (seen.has(key)) return false;
+    if (!key || seen.has(key)) return false;
     seen.add(key);
     return true;
   });
@@ -563,11 +567,14 @@ Generate EXACTLY ${numQuestions} 100% ACCURATE MCQs with VERIFIED correct answer
   };
 
   const parseMCQs = (text: string): MCQ[] => {
+    if (!text || typeof text !== 'string') return [];
+    
     const questions: MCQ[] = [];
-    const qBlocks = text.split(/(?=Q\d+\.)/i).filter(b => b.trim());
+    const qBlocks = text.split(/(?=Q\d+\.)/i).filter(b => b && b.trim());
     
     for (const block of qBlocks) {
-      const lines = block.split('\n').map(l => l.trim()).filter(Boolean);
+      if (!block) continue;
+      const lines = block.split('\n').map(l => (l || '').trim()).filter(Boolean);
       if (lines.length < 6) continue;
       
       const mcq: MCQ = {
@@ -581,8 +588,9 @@ Generate EXACTLY ${numQuestions} 100% ACCURATE MCQs with VERIFIED correct answer
       let inExplanation = false;
       
       for (const line of lines) {
+        if (!line) continue;
         if (/^Q\d+\./.test(line)) {
-          mcq.question = line.replace(/^Q\d+\.\s*/, '');
+          mcq.question = line.replace(/^Q\d+\.\s*/, '') || '';
         } else if (/^[a-d]\)/i.test(line) && mcq.options.length < 4) {
           mcq.options.push(line);
         } else if (/^Correct Answer:/i.test(line)) {
@@ -590,7 +598,7 @@ Generate EXACTLY ${numQuestions} 100% ACCURATE MCQs with VERIFIED correct answer
           mcq.correct = match ? match[0].toLowerCase() : '';
           inExplanation = false;
         } else if (/^Explanation:/i.test(line)) {
-          mcq.explanation = line.replace(/^Explanation:\s*/i, '');
+          mcq.explanation = line.replace(/^Explanation:\s*/i, '') || '';
           inExplanation = true;
         } else if (inExplanation) {
           mcq.explanation += ' ' + line;
@@ -604,7 +612,8 @@ Generate EXACTLY ${numQuestions} 100% ACCURATE MCQs with VERIFIED correct answer
         mcq.correct = 'a'; // Default to first option if invalid
       }
       
-      if (mcq.question && mcq.options.length === 4 && mcq.correct) {
+      // Ensure question exists and is valid before adding
+      if (mcq.question && mcq.question.trim().length > 0 && mcq.options.length === 4 && mcq.correct) {
         questions.push(mcq);
       }
     }
