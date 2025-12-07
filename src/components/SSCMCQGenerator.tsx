@@ -170,6 +170,48 @@ const getAvailableKeyCount = (): number => {
 const getGeminiUrl = (key: string) => 
   `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
 
+// API Key status for real-time UI
+interface KeyStatus {
+  index: number;
+  status: 'idle' | 'active' | 'rate-limited' | 'recovering';
+  requestCount: number;
+  recoveryProgress: number; // 0-100%
+}
+
+// Get all key statuses for UI display
+const getKeyStatuses = (): KeyStatus[] => {
+  const now = Date.now();
+  const RATE_LIMIT_RECOVERY_MS = 90000;
+  
+  return Array.from({ length: GEMINI_API_KEYS.length }, (_, i) => {
+    const usage = keyUsageMap.get(i) || { requestCount: 0, lastUsed: 0, rateLimited: false, rateLimitedAt: 0 };
+    
+    let status: KeyStatus['status'] = 'idle';
+    let recoveryProgress = 100;
+    
+    if (usage.rateLimited) {
+      const elapsed = now - usage.rateLimitedAt;
+      if (elapsed < RATE_LIMIT_RECOVERY_MS) {
+        status = 'recovering';
+        recoveryProgress = Math.min(100, Math.round((elapsed / RATE_LIMIT_RECOVERY_MS) * 100));
+      } else {
+        status = 'idle';
+      }
+    } else if (usage.requestCount > 0 && now - usage.lastUsed < 5000) {
+      status = 'active';
+    } else if (usage.requestCount > 0) {
+      status = 'idle';
+    }
+    
+    return {
+      index: i,
+      status,
+      requestCount: usage.requestCount,
+      recoveryProgress
+    };
+  });
+};
+
 const SSCMCQGenerator = () => {
   const navigate = useNavigate();
   const [exam, setExam] = useState('SSC CGL');
@@ -181,8 +223,20 @@ const SSCMCQGenerator = () => {
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const [pdfLibLoaded, setPdfLibLoaded] = useState(false);
+  const [keyStatuses, setKeyStatuses] = useState<KeyStatus[]>(getKeyStatuses());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const processingRef = useRef({ startTime: 0, completed: 0 });
+  
+  // Update key statuses every 500ms during processing
+  useEffect(() => {
+    if (!processing) return;
+    
+    const interval = setInterval(() => {
+      setKeyStatuses(getKeyStatuses());
+    }, 500);
+    
+    return () => clearInterval(interval);
+  }, [processing]);
 
   useEffect(() => {
     const loadPdfLib = async () => {
@@ -921,7 +975,7 @@ Generate EXACTLY ${numQuestions} MCQs now:`;
       <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-2xl p-8 my-8">
         <div className="text-center mb-6">
           <div className="inline-block bg-gradient-to-r from-cyan-500 to-blue-600 text-white px-6 py-2 rounded-full text-sm font-bold mb-4 shadow-lg">
-            🚀 7 API KEYS • SMART ROTATION • AUTO RECOVERY
+            🚀 14 API KEYS • SMART ROTATION • AUTO RECOVERY
           </div>
           <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
             ⚡ SSC MCQ Generator Ultra
@@ -1044,10 +1098,80 @@ Generate EXACTLY ${numQuestions} MCQs now:`;
           />
         </div>
 
+        {/* Real-time API Key Status Panel */}
+        {processing && (
+          <div className="mb-4 p-4 bg-gradient-to-br from-slate-800 to-slate-900 rounded-xl shadow-lg">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-white font-bold text-sm">🔑 API Key Status (Real-time)</h3>
+              <div className="flex gap-4 text-xs">
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+                  <span className="text-green-400">Active</span>
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-gray-400"></span>
+                  <span className="text-gray-400">Idle</span>
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                  <span className="text-amber-400">Recovering</span>
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                  <span className="text-red-400">Rate Limited</span>
+                </span>
+              </div>
+            </div>
+            <div className="grid grid-cols-7 gap-2">
+              {keyStatuses.map((key) => (
+                <div
+                  key={key.index}
+                  className={`relative p-2 rounded-lg text-center transition-all duration-300 ${
+                    key.status === 'active'
+                      ? 'bg-green-500/20 border-2 border-green-400 shadow-lg shadow-green-500/30'
+                      : key.status === 'recovering'
+                      ? 'bg-amber-500/20 border-2 border-amber-400'
+                      : key.status === 'rate-limited'
+                      ? 'bg-red-500/20 border-2 border-red-500'
+                      : 'bg-gray-700/50 border border-gray-600'
+                  }`}
+                >
+                  <div className={`text-xs font-bold ${
+                    key.status === 'active' ? 'text-green-400' :
+                    key.status === 'recovering' ? 'text-amber-400' :
+                    key.status === 'rate-limited' ? 'text-red-400' :
+                    'text-gray-400'
+                  }`}>
+                    K{key.index + 1}
+                  </div>
+                  <div className="text-[10px] text-gray-400 mt-0.5">
+                    {key.requestCount} req
+                  </div>
+                  {key.status === 'recovering' && (
+                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-700 rounded-b-lg overflow-hidden">
+                      <div 
+                        className="h-full bg-amber-400 transition-all duration-500"
+                        style={{ width: `${key.recoveryProgress}%` }}
+                      ></div>
+                    </div>
+                  )}
+                  {key.status === 'active' && (
+                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full animate-ping"></div>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 flex justify-between text-xs text-gray-400">
+              <span>Available: {keyStatuses.filter(k => k.status !== 'rate-limited' && k.status !== 'recovering').length}/14</span>
+              <span>Total Requests: {keyStatuses.reduce((sum, k) => sum + k.requestCount, 0)}</span>
+            </div>
+          </div>
+        )}
+
         <div className="bg-gradient-to-r from-cyan-50 to-blue-50 border-l-4 border-cyan-500 p-4 mb-4 rounded-lg">
-          <p className="font-bold text-cyan-800 mb-2">⚡ Speed Optimizations (10 API Keys):</p>
+          <p className="font-bold text-cyan-800 mb-2">⚡ Speed Optimizations (14 API Keys):</p>
           <ul className="text-sm text-cyan-700 space-y-1 ml-4">
-            <li>✓ <strong>10 Gemini API keys rotating</strong> for parallel processing</li>
+            <li>✓ <strong>14 Gemini API keys rotating</strong> for parallel processing</li>
             <li>✓ <strong>Automatic deduplication</strong> ensures 100% unique questions</li>
             <li>✓ 40-page batches with 20 concurrent operations</li>
             <li>✓ <strong>Up to 500 MCQs</strong> per generation</li>
