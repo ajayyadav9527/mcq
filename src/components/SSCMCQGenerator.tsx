@@ -37,7 +37,7 @@ const GEMINI_API_KEYS = [
 
 // Helper to normalize question text for comparison
 const normalizeQuestion = (q: string): string => 
-  q.toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 100);
+  (q || '').toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 100);
 
 // Remove duplicate questions
 const deduplicateMCQs = (mcqs: MCQ[]): MCQ[] => {
