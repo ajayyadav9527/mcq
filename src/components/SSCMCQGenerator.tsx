@@ -35,6 +35,10 @@ const GEMINI_API_KEYS = [
   "AIzaSyAzR-Ege3fmjAWp1f6WCrN_YnJOUVJEM-U"
 ];
 
+// Track which API keys are rate limited
+const rateLimitedKeys = new Set<number>();
+let lastKeyIndex = 0;
+
 // Helper to normalize question text for comparison
 const normalizeQuestion = (q: string | undefined | null): string => {
   if (!q || typeof q !== 'string') return '';
@@ -54,19 +58,29 @@ const deduplicateMCQs = (mcqs: MCQ[]): MCQ[] => {
   });
 };
 
-// Balanced API key distribution - tracks usage per key to prevent overloading
-const apiKeyUsage: number[] = new Array(GEMINI_API_KEYS.length).fill(0);
-const getNextApiKey = () => {
-  // Find the key with least usage for balanced load
-  const minUsage = Math.min(...apiKeyUsage);
-  const leastUsedIndex = apiKeyUsage.indexOf(minUsage);
-  apiKeyUsage[leastUsedIndex]++;
-  return { key: GEMINI_API_KEYS[leastUsedIndex], index: leastUsedIndex };
+// Get next available API key (skip rate limited ones)
+const getNextApiKey = (): { key: string; index: number } | null => {
+  // Try all keys starting from last used
+  for (let i = 0; i < GEMINI_API_KEYS.length; i++) {
+    const idx = (lastKeyIndex + i) % GEMINI_API_KEYS.length;
+    if (!rateLimitedKeys.has(idx)) {
+      lastKeyIndex = (idx + 1) % GEMINI_API_KEYS.length;
+      return { key: GEMINI_API_KEYS[idx], index: idx };
+    }
+  }
+  return null; // All keys rate limited
 };
 
-// Reset API usage tracking for new batch
+// Reset rate limit tracking
 const resetApiUsage = () => {
-  apiKeyUsage.fill(0);
+  rateLimitedKeys.clear();
+  lastKeyIndex = 0;
+};
+
+// Mark a key as rate limited
+const markKeyRateLimited = (index: number) => {
+  rateLimitedKeys.add(index);
+  console.log(`API key ${index} rate limited. ${GEMINI_API_KEYS.length - rateLimitedKeys.size} keys remaining.`);
 };
 
 const getGeminiUrl = (key: string) => 
@@ -374,7 +388,7 @@ const SSCMCQGenerator = () => {
     return finalContent;
   };
 
-  const generateMCQsBatch = async (content: string, numQuestions: number, batchNum: number, totalBatches: number, apiKeyIndex: number): Promise<MCQ[]> => {
+  const generateMCQsBatch = async (content: string, numQuestions: number, batchNum: number, totalBatches: number, setStatusFn: (s: string) => void): Promise<MCQ[]> => {
     // Guard against invalid inputs
     if (!content || typeof content !== 'string' || content.trim().length < 50) {
       console.log(`Batch ${batchNum}: Skipping - content too short or invalid`);
@@ -386,14 +400,6 @@ const SSCMCQGenerator = () => {
       return [];
     }
 
-    const safeKeyIndex = Math.abs(apiKeyIndex) % GEMINI_API_KEYS.length;
-    const apiKey = GEMINI_API_KEYS[safeKeyIndex];
-    
-    if (!apiKey) {
-      console.error(`Batch ${batchNum}: No API key available`);
-      return [];
-    }
-    
     // Dynamic date calculation
     const currentDate = new Date();
     const pastDate = new Date();
@@ -438,23 +444,28 @@ ${safeContent}
 
 Generate EXACTLY ${numQuestions} MCQs:`;
 
-    for (let retry = 0; retry < 4; retry++) {
+    // Try up to 10 different API keys
+    for (let attempt = 0; attempt < GEMINI_API_KEYS.length; attempt++) {
+      const keyData = getNextApiKey();
+      if (!keyData) {
+        console.log(`Batch ${batchNum}: All API keys rate limited!`);
+        return [];
+      }
+      
       try {
-        // Use different API key on retry
-        const retryKeyIndex = (safeKeyIndex + retry) % GEMINI_API_KEYS.length;
-        const retryApiKey = GEMINI_API_KEYS[retryKeyIndex];
+        setStatusFn(`📝 Batch ${batchNum}/${totalBatches} (using API key ${keyData.index + 1})...`);
         
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
+        const timeoutId = setTimeout(() => controller.abort(), 90000); // 90s timeout
         
-        const response = await fetch(getGeminiUrl(retryApiKey), {
+        const response = await fetch(getGeminiUrl(keyData.key), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           signal: controller.signal,
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: {
-              maxOutputTokens: Math.min(numQuestions * 700, 12000),
+              maxOutputTokens: Math.min(numQuestions * 800, 16000),
               temperature: 0.2
             }
           })
@@ -464,14 +475,16 @@ Generate EXACTLY ${numQuestions} MCQs:`;
         
         if (!response.ok) {
           const status = response.status;
-          console.log(`Batch ${batchNum} API error: ${status}, retry ${retry + 1}/4`);
+          console.log(`Batch ${batchNum} API error: ${status} on key ${keyData.index}`);
           
-          // Rate limit - wait longer
           if (status === 429) {
-            await new Promise(r => setTimeout(r, 3000 * (retry + 1)));
-          } else {
-            await new Promise(r => setTimeout(r, 1500 * (retry + 1)));
+            // Mark this key as rate limited and try next
+            markKeyRateLimited(keyData.index);
+            await new Promise(r => setTimeout(r, 2000));
+            continue;
           }
+          
+          await new Promise(r => setTimeout(r, 3000));
           continue;
         }
         
@@ -479,8 +492,8 @@ Generate EXACTLY ${numQuestions} MCQs:`;
         const mcqText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
         
         if (!mcqText || typeof mcqText !== 'string' || mcqText.trim().length < 50) {
-          console.log(`Batch ${batchNum}: Empty/invalid response, retry ${retry + 1}/4`);
-          await new Promise(r => setTimeout(r, 1000));
+          console.log(`Batch ${batchNum}: Empty/invalid response`);
+          await new Promise(r => setTimeout(r, 2000));
           continue;
         }
         
@@ -491,15 +504,14 @@ Generate EXACTLY ${numQuestions} MCQs:`;
           return mcqs;
         }
         
-        // No MCQs parsed - retry with different key
-        await new Promise(r => setTimeout(r, 800));
+        await new Promise(r => setTimeout(r, 2000));
       } catch (err: any) {
         if (err.name === 'AbortError') {
-          console.log(`Batch ${batchNum}: Request timeout, retry ${retry + 1}/4`);
+          console.log(`Batch ${batchNum}: Request timeout on key ${keyData.index}`);
         } else {
           console.error(`Batch ${batchNum} error:`, err?.message || err);
         }
-        await new Promise(r => setTimeout(r, 1000 * (retry + 1)));
+        await new Promise(r => setTimeout(r, 3000));
       }
     }
     
@@ -553,25 +565,23 @@ Generate EXACTLY ${numQuestions} MCQs:`;
 
     console.log(`Processing ${pages.length} content chunks for ${numQuestions} MCQs`);
 
-    // Smaller batches = more reliable, ask for slightly more
-    const MCQS_PER_BATCH = 10;
-    const targetQuestions = Math.ceil(numQuestions * 1.15); // Request 15% extra
+    // Use larger batches (15 MCQs each) to reduce API calls
+    const MCQS_PER_BATCH = 15;
+    const targetQuestions = Math.ceil(numQuestions * 1.2); // Request 20% extra
     const totalBatches = Math.ceil(targetQuestions / MCQS_PER_BATCH);
     
     // Create batches with content distributed across pages
-    const batches: { content: string; questions: number; keyIndex: number }[] = [];
+    const batches: { content: string; questions: number }[] = [];
     
     for (let i = 0; i < totalBatches; i++) {
       const pageIndex = i % pages.length;
       const page = pages[pageIndex];
       const questionsForBatch = Math.min(MCQS_PER_BATCH, targetQuestions - (i * MCQS_PER_BATCH));
-      const keyIndex = i % GEMINI_API_KEYS.length;
       
       if (page && typeof page === 'string' && page.trim().length > 50 && questionsForBatch > 0) {
         batches.push({
           content: page,
-          questions: questionsForBatch,
-          keyIndex
+          questions: questionsForBatch
         });
       }
     }
@@ -581,39 +591,29 @@ Generate EXACTLY ${numQuestions} MCQs:`;
       return [];
     }
 
-    console.log(`Created ${batches.length} batches across ${GEMINI_API_KEYS.length} API keys`);
-    setStatus(`⚡ Generating ${numQuestions} MCQs in ${batches.length} batches...`);
+    console.log(`Created ${batches.length} batches to generate ${numQuestions} MCQs`);
+    setStatus(`⚡ Generating ${numQuestions} MCQs (${batches.length} batches, processing sequentially to avoid rate limits)...`);
 
     const allMcqs: MCQ[] = [];
     const existingQuestions = new Set<string>();
     
-    // Process in smaller waves with proper delays to avoid rate limiting
-    const WAVE_SIZE = 6; // Reduced wave size for stability
-    const totalWaves = Math.ceil(batches.length / WAVE_SIZE);
-    
-    for (let wave = 0; wave < totalWaves; wave++) {
-      const waveStart = wave * WAVE_SIZE;
-      const waveEnd = Math.min(waveStart + WAVE_SIZE, batches.length);
-      const waveBatches = batches.slice(waveStart, waveEnd);
+    // Process SEQUENTIALLY to avoid rate limiting
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i];
       
-      if (waveBatches.length === 0) continue;
+      // Check if all API keys are rate limited
+      const keyData = getNextApiKey();
+      if (!keyData) {
+        setError('⚠️ All API keys are rate limited. Please wait a few minutes and try again with fewer MCQs.');
+        break;
+      }
       
-      setStatus(`🔄 Wave ${wave + 1}/${totalWaves} (${allMcqs.length}/${numQuestions} MCQs)...`);
+      setStatus(`📝 Processing batch ${i + 1}/${batches.length} (${allMcqs.length}/${numQuestions} MCQs generated)...`);
       
-      const wavePromises = waveBatches.map((batch, idx) => {
-        // Stagger requests within wave to reduce rate limiting
-        return new Promise<MCQ[]>(async (resolve) => {
-          await new Promise(r => setTimeout(r, idx * 200)); // 200ms stagger
-          const result = await generateMCQsBatch(batch.content, batch.questions, waveStart + idx + 1, batches.length, batch.keyIndex);
-          resolve(result);
-        });
-      });
-      
-      const waveResults = await Promise.all(wavePromises);
+      const result = await generateMCQsBatch(batch.content, batch.questions, i + 1, batches.length, setStatus);
       
       // Add unique MCQs with validation
-      for (const result of waveResults) {
-        if (!result || !Array.isArray(result)) continue;
+      if (result && Array.isArray(result)) {
         for (const mcq of result) {
           if (!mcq || typeof mcq !== 'object') continue;
           if (!mcq.question || typeof mcq.question !== 'string') continue;
@@ -632,48 +632,43 @@ Generate EXACTLY ${numQuestions} MCQs:`;
       const progressPct = Math.min(100, Math.round((allMcqs.length / numQuestions) * 100));
       setStatus(`📊 Generated ${allMcqs.length}/${numQuestions} MCQs (${progressPct}%)...`);
       
-      // Delay between waves - longer for stability
-      if (wave < totalWaves - 1) {
-        await new Promise(r => setTimeout(r, 800));
-      }
-      
       // Early exit if we have enough
       if (allMcqs.length >= numQuestions) {
         break;
       }
+      
+      // Delay between batches to avoid rate limiting (5 seconds)
+      if (i < batches.length - 1) {
+        setStatus(`⏳ Waiting 5s before next batch to avoid rate limits...`);
+        await new Promise(r => setTimeout(r, 5000));
+      }
     }
 
-    // If still short, generate more with gap-filling
+    // If still short, try gap-filling with longer delays
     let attempts = 0;
-    const maxAttempts = 6;
+    const maxAttempts = 3;
     
-    while (allMcqs.length < numQuestions * 0.85 && attempts < maxAttempts && pages.length > 0) {
+    while (allMcqs.length < numQuestions * 0.8 && attempts < maxAttempts && pages.length > 0) {
+      const keyData = getNextApiKey();
+      if (!keyData) {
+        setError('⚠️ All API keys are rate limited. Generated ' + allMcqs.length + ' MCQs.');
+        break;
+      }
+      
       attempts++;
       const shortfall = numQuestions - allMcqs.length;
       setStatus(`📊 Gap-filling: need ${shortfall} more (attempt ${attempts}/${maxAttempts})...`);
       
-      const extraBatches = Math.min(Math.ceil(shortfall / MCQS_PER_BATCH), 4);
-      const extraPromises: Promise<MCQ[]>[] = [];
+      await new Promise(r => setTimeout(r, 5000)); // Wait before gap-filling
       
-      for (let i = 0; i < extraBatches; i++) {
-        const pageIndex = Math.floor(Math.random() * pages.length);
-        const page = pages[pageIndex];
-        if (page && typeof page === 'string' && page.trim().length > 100) {
-          const questionsNeeded = Math.min(MCQS_PER_BATCH, Math.ceil(shortfall / extraBatches));
-          extraPromises.push(
-            new Promise<MCQ[]>(async (resolve) => {
-              await new Promise(r => setTimeout(r, i * 300)); // Stagger
-              const result = await generateMCQsBatch(page, questionsNeeded, i + 1, extraBatches, (i + attempts) % GEMINI_API_KEYS.length);
-              resolve(result);
-            })
-          );
-        }
-      }
+      const pageIndex = Math.floor(Math.random() * pages.length);
+      const page = pages[pageIndex];
       
-      if (extraPromises.length > 0) {
-        const extraResults = await Promise.all(extraPromises);
-        for (const result of extraResults) {
-          if (!result || !Array.isArray(result)) continue;
+      if (page && typeof page === 'string' && page.trim().length > 100) {
+        const questionsNeeded = Math.min(MCQS_PER_BATCH, shortfall);
+        const result = await generateMCQsBatch(page, questionsNeeded, attempts, maxAttempts, setStatus);
+        
+        if (result && Array.isArray(result)) {
           for (const mcq of result) {
             if (!mcq || typeof mcq !== 'object') continue;
             if (!mcq.question || typeof mcq.question !== 'string') continue;
@@ -687,15 +682,16 @@ Generate EXACTLY ${numQuestions} MCQs:`;
               if (allMcqs.length >= numQuestions) break;
             }
           }
-          if (allMcqs.length >= numQuestions) break;
         }
       }
-      
-      await new Promise(r => setTimeout(r, 1000));
     }
 
     const finalCount = Math.min(allMcqs.length, numQuestions);
-    setStatus(`✅ Generated ${finalCount} unique MCQs`);
+    if (finalCount === 0) {
+      setError('❌ Could not generate MCQs. All API keys may be rate limited. Please try again later.');
+    } else {
+      setStatus(`✅ Generated ${finalCount} unique MCQs`);
+    }
     return allMcqs.slice(0, numQuestions);
   };
 
