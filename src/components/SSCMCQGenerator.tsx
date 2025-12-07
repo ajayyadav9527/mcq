@@ -50,11 +50,19 @@ const deduplicateMCQs = (mcqs: MCQ[]): MCQ[] => {
   });
 };
 
-let apiKeyIndex = 0;
+// Balanced API key distribution - tracks usage per key to prevent overloading
+const apiKeyUsage: number[] = new Array(GEMINI_API_KEYS.length).fill(0);
 const getNextApiKey = () => {
-  const key = GEMINI_API_KEYS[apiKeyIndex];
-  apiKeyIndex = (apiKeyIndex + 1) % GEMINI_API_KEYS.length;
-  return key;
+  // Find the key with least usage for balanced load
+  const minUsage = Math.min(...apiKeyUsage);
+  const leastUsedIndex = apiKeyUsage.indexOf(minUsage);
+  apiKeyUsage[leastUsedIndex]++;
+  return { key: GEMINI_API_KEYS[leastUsedIndex], index: leastUsedIndex };
+};
+
+// Reset API usage tracking for new batch
+const resetApiUsage = () => {
+  apiKeyUsage.fill(0);
 };
 
 const getGeminiUrl = (key: string) => 
@@ -234,7 +242,7 @@ const SSCMCQGenerator = () => {
   const processPageWithOCR = async (pdf: any, pageNum: number): Promise<string | null> => {
     try {
       const base64Data = await extractPageImage(pdf, pageNum);
-      const apiKey = getNextApiKey();
+      const { key: apiKey } = getNextApiKey();
       
       const response = await fetch(getGeminiUrl(apiKey), {
         method: "POST",
@@ -302,8 +310,9 @@ const SSCMCQGenerator = () => {
     return allContent.join('\n');
   };
 
-  const generateMCQsBatch = async (content: string, numQuestions: number, batchNum: number, totalBatches: number, retries = 2): Promise<MCQ[]> => {
-    const apiKey = getNextApiKey();
+  const generateMCQsBatch = async (content: string, numQuestions: number, batchNum: number, totalBatches: number, assignedKeyIndex: number, retries = 2): Promise<MCQ[]> => {
+    // Use assigned key index for balanced distribution
+    const apiKey = GEMINI_API_KEYS[assignedKeyIndex];
     
     // Calculate dynamic date range (current date to 1.5 years back)
     const currentDate = new Date();
@@ -323,13 +332,18 @@ const SSCMCQGenerator = () => {
     const prompt = `You are India's TOP ${exam} exam coach with 20+ years experience. Current Date: ${currentDateStr}.
 Your task: Create EXACTLY ${numQuestions} PERFECT MCQs that cover ALL concepts from this content.
 
+🚨 ACCURACY IS CRITICAL - 100% FACTUAL CORRECTNESS REQUIRED:
+- Double-check EVERY fact, date, name, number before including
+- Correct answer MUST be verifiable from the provided content
+- If unsure about a fact, DO NOT include it
+- Cross-reference all options to ensure only ONE is correct
+
 🔥 SSC EXAM TREND PRIORITY (${pastDateStr} - ${currentDateStr}):
 Focus on topics/patterns ACTUALLY ASKED in recent ${exam} exams during this period:
 - HIGH WEIGHTAGE: Indian Polity (Articles, Amendments, Fundamental Rights/Duties), Economy (Budget ${currentYear}-${currentYear + 1}, GDP, Inflation), Current Affairs (Recent summits, International events, Sports)
 - FREQUENTLY ASKED: Constitutional bodies, Government schemes (PM schemes, welfare programs), Important dates & events, First in India/World
 - TRENDING TOPICS: Digital India initiatives, Environmental policies, International summits, Awards & honors, Scientific developments
 - EXAM PATTERNS: Direct fact-based questions, "Which of the following" match-the-pair, Chronological ordering, "Consider the statements" type
-- If content has topics from above categories, create MORE questions on them
 
 📋 STRICT OUTPUT FORMAT (follow EXACTLY):
 Q1. [Direct, clear question testing a specific fact/concept - match SSC exam style]
@@ -342,39 +356,38 @@ Explanation: [Professional 6-8 sentence explanation - see format below]
 
 📝 EXPLANATION STRUCTURE (MANDATORY - follow this order):
 1. ANSWER: Start with "The correct answer is [option letter]) [answer text]."
-2. WHY CORRECT: Explain the core concept/fact in 1-2 simple sentences. Use everyday analogies if helpful.
-3. KEY FACTS: Include specific dates, numbers, names, articles, or data that students must remember.
-4. CONTEXT: Brief background - why this topic matters, historical significance, or real-world application.
-5. WRONG OPTIONS: Briefly explain why each wrong option is incorrect (1 line each).
-6. MEMORY TIP: Give a trick, mnemonic, or association to remember this fact easily.
-7. EXAM TIP: Mention if this topic appeared in recent SSC exams (${pastYear}-${currentYear}) or is expected.
+2. WHY CORRECT: Explain the core concept/fact in 1-2 simple sentences with PROOF from content.
+3. KEY FACTS: Include specific dates, numbers, names, articles, or data - all VERIFIED.
+4. CONTEXT: Brief background - why this topic matters, historical significance.
+5. WRONG OPTIONS: Explain why each wrong option is incorrect with specific reasons.
+6. MEMORY TIP: Give a trick, mnemonic, or association to remember this fact.
+7. EXAM TIP: Mention if this topic appeared in recent SSC exams (${pastYear}-${currentYear}).
 
-🎯 CONTENT COVERAGE RULES:
-- Extract EVERY important fact, date, name, article, scheme, place from the content
-- Create questions on ALL topics/sections present - don't skip any part
-- PRIORITIZE topics matching recent SSC trends (${pastDateStr} - ${currentDateStr})
-- Include questions on: definitions, dates, names, places, numbers, comparisons, processes
+🎯 EQUAL PAGE COVERAGE - EVERY SECTION MUST GET QUESTIONS:
+- Extract facts from EVERY paragraph and section
+- Create questions on ALL topics present - don't skip any part
 - Each question must test a DIFFERENT concept - no repetition
-- Cover ALL pages/sections proportionally
+- Cover the ENTIRE content proportionally
 
-✅ QUALITY STANDARDS:
-- 100% factually accurate - verify before including
-- Questions must match actual SSC exam difficulty and style
-- All 4 options must be plausible (avoid obviously wrong options)
-- Only ONE correct answer per question
+✅ QUALITY & ACCURACY STANDARDS:
+- 100% factually accurate - VERIFY before including
+- Correct answer must be PROVABLE from the content
+- All 4 options must be plausible but clearly distinguishable
+- Only ONE correct answer per question - double-check this
 - Use simple English that a Class 10 student can understand
-- Explanations should teach the concept, not just state the answer
+- Explanations should PROVE the answer, not just state it
 
-❌ AVOID:
+❌ STRICTLY AVOID:
+- Questions with ambiguous or multiple correct answers
+- Facts that cannot be verified from the content
 - Vague questions like "Which of the following is true?"
 - Options that are too similar or confusing
-- Outdated information (pre-2020) unless historically important
 - Missing any section of the provided content
 
-CONTENT TO COVER (extract MCQs from ALL parts, prioritize trending SSC topics):
-${content.substring(0, 70000)}
+CONTENT TO COVER (generate MCQs from ALL parts with EQUAL weightage):
+${content.substring(0, 65000)}
 
-Generate EXACTLY ${numQuestions} high-quality MCQs covering ALL concepts with SSC ${pastYear}-${currentYear} exam focus:`;
+Generate EXACTLY ${numQuestions} 100% ACCURATE MCQs with VERIFIED correct answers:`;
 
     try {
       const response = await fetch(getGeminiUrl(apiKey), {
@@ -384,15 +397,17 @@ Generate EXACTLY ${numQuestions} high-quality MCQs covering ALL concepts with SS
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
             maxOutputTokens: 20000,
-            temperature: 0.4
+            temperature: 0.2 // Lower temperature for more accuracy
           }
         })
       });
       
       if (!response.ok) {
         if (retries > 0) {
-          await new Promise(r => setTimeout(r, 300));
-          return generateMCQsBatch(content, numQuestions, batchNum, totalBatches, retries - 1);
+          // Use different API key for retry
+          const retryKeyIndex = (assignedKeyIndex + 1) % GEMINI_API_KEYS.length;
+          await new Promise(r => setTimeout(r, 200));
+          return generateMCQsBatch(content, numQuestions, batchNum, totalBatches, retryKeyIndex, retries - 1);
         }
         return [];
       }
@@ -402,68 +417,52 @@ Generate EXACTLY ${numQuestions} high-quality MCQs covering ALL concepts with SS
       const mcqs = parseMCQs(mcqText);
       
       // Retry if got too few MCQs
-      if (mcqs.length < numQuestions * 0.6 && retries > 0) {
-        return generateMCQsBatch(content, numQuestions, batchNum, totalBatches, retries - 1);
+      if (mcqs.length < numQuestions * 0.7 && retries > 0) {
+        const retryKeyIndex = (assignedKeyIndex + 1) % GEMINI_API_KEYS.length;
+        return generateMCQsBatch(content, numQuestions, batchNum, totalBatches, retryKeyIndex, retries - 1);
       }
       
       return mcqs;
     } catch (err) {
-      if (retries > 0) return generateMCQsBatch(content, numQuestions, batchNum, totalBatches, retries - 1);
+      if (retries > 0) {
+        const retryKeyIndex = (assignedKeyIndex + 1) % GEMINI_API_KEYS.length;
+        return generateMCQsBatch(content, numQuestions, batchNum, totalBatches, retryKeyIndex, retries - 1);
+      }
       return [];
     }
   };
 
   const generateMCQs = async (content: string, numQuestions: number): Promise<MCQ[]> => {
-    // Split content by PAGES to ensure EVERY page is covered
-    const pages = content.split(/(?=--- Page \d+ ---)/).filter(p => p.trim().length > 50);
+    // Reset API usage tracking for balanced load
+    resetApiUsage();
+    
+    // Split content by PAGES to ensure EVERY page is covered EQUALLY
+    let pages = content.split(/(?=--- Page \d+ ---)/).filter(p => p.trim().length > 50);
     const totalPages = pages.length;
     
     if (totalPages === 0) {
       // Fallback: split by character count if no page markers
-      const MAX_CHUNK_SIZE = 60000;
+      const MAX_CHUNK_SIZE = 55000;
+      pages = [];
       for (let i = 0; i < content.length; i += MAX_CHUNK_SIZE) {
         pages.push(content.substring(i, i + MAX_CHUNK_SIZE));
       }
     }
     
-    // Calculate content weight for each page (more content = more MCQs)
-    const pageWeights: number[] = pages.map(page => {
-      const charCount = page.length;
-      const factCount = (page.match(/\b\d+\b/g) || []).length + 
-                       (page.match(/\b[A-Z][a-z]+/g) || []).length;
-      return charCount + (factCount * 50); // Boost pages with more facts
+    // EQUAL WEIGHTAGE: Calculate MCQs per page for uniform coverage
+    const baseQuestionsPerPage = Math.floor(numQuestions / pages.length);
+    const extraQuestions = numQuestions % pages.length;
+    
+    // Distribute MCQs equally across ALL pages
+    const mcqDistribution: number[] = pages.map((_, idx) => {
+      // Distribute extra questions to first N pages
+      return baseQuestionsPerPage + (idx < extraQuestions ? 1 : 0);
     });
     
-    const totalWeight = pageWeights.reduce((a, b) => a + b, 0);
-    
-    // Distribute MCQs proportionally across ALL pages
-    // Minimum 1 MCQ per page to ensure complete coverage
-    let mcqDistribution: number[] = pages.map((_, idx) => {
-      const proportion = pageWeights[idx] / totalWeight;
-      return Math.max(1, Math.round(numQuestions * proportion));
-    });
-    
-    // Adjust to match exact total
-    let currentTotal = mcqDistribution.reduce((a, b) => a + b, 0);
-    while (currentTotal !== numQuestions) {
-      if (currentTotal < numQuestions) {
-        // Add to heaviest pages
-        const maxIdx = pageWeights.indexOf(Math.max(...pageWeights));
-        mcqDistribution[maxIdx]++;
-        currentTotal++;
-      } else {
-        // Remove from pages with most MCQs (but keep minimum 1)
-        const maxMcqIdx = mcqDistribution.findIndex(m => m === Math.max(...mcqDistribution) && m > 1);
-        if (maxMcqIdx >= 0) {
-          mcqDistribution[maxMcqIdx]--;
-          currentTotal--;
-        } else break;
-      }
-    }
-    
-    // Group pages into chunks for API calls (max 60k chars per chunk)
-    const MAX_CHUNK_SIZE = 60000;
-    const batches: { content: string; questions: number; pageRange: string }[] = [];
+    // Group pages into optimized chunks for parallel API calls
+    const MAX_CHUNK_SIZE = 55000;
+    const NUM_API_KEYS = GEMINI_API_KEYS.length;
+    const batches: { content: string; questions: number; pageRange: string; keyIndex: number }[] = [];
     let currentChunk = '';
     let currentChunkMcqs = 0;
     let chunkStartPage = 1;
@@ -473,11 +472,13 @@ Generate EXACTLY ${numQuestions} high-quality MCQs covering ALL concepts with SS
       const pageMcqs = mcqDistribution[i];
       
       if (currentChunk.length + page.length > MAX_CHUNK_SIZE && currentChunk.length > 0) {
-        // Save current chunk
+        // Save current chunk with assigned API key for load balancing
+        const keyIndex = batches.length % NUM_API_KEYS;
         batches.push({
           content: currentChunk,
           questions: currentChunkMcqs,
-          pageRange: `Pages ${chunkStartPage}-${i}`
+          pageRange: `Pages ${chunkStartPage}-${i}`,
+          keyIndex
         });
         currentChunk = page;
         currentChunkMcqs = pageMcqs;
@@ -490,20 +491,31 @@ Generate EXACTLY ${numQuestions} high-quality MCQs covering ALL concepts with SS
     
     // Don't forget last chunk
     if (currentChunk.trim() && currentChunkMcqs > 0) {
+      const keyIndex = batches.length % NUM_API_KEYS;
       batches.push({
         content: currentChunk,
         questions: currentChunkMcqs,
-        pageRange: `Pages ${chunkStartPage}-${pages.length}`
+        pageRange: `Pages ${chunkStartPage}-${pages.length}`,
+        keyIndex
       });
     }
     
+    // Rebalance API keys across batches for optimal distribution
+    // Sort batches by question count and interleave API key assignment
+    const sortedBatches = [...batches].sort((a, b) => b.questions - a.questions);
+    sortedBatches.forEach((batch, idx) => {
+      batch.keyIndex = idx % NUM_API_KEYS;
+    });
+    
     console.log(`Coverage plan: ${pages.length} pages → ${batches.length} batches, ${numQuestions} total MCQs`);
+    console.log(`API key distribution: ${Array.from({length: NUM_API_KEYS}, (_, i) => 
+      `Key${i+1}: ${batches.filter(b => b.keyIndex === i).length} batches`).join(', ')}`);
     
-    setStatus(`⚡ Generating ${numQuestions} MCQs from ${pages.length} pages (${batches.length} batches)...`);
+    setStatus(`⚡ Generating ${numQuestions} MCQs from ${pages.length} pages (${batches.length} parallel batches)...`);
     
-    // Run ALL batches in parallel using all 10 API keys simultaneously
+    // Run ALL batches in parallel with balanced API key distribution
     const batchPromises = batches.map((batch, idx) => 
-      generateMCQsBatch(batch.content, batch.questions, idx + 1, batches.length)
+      generateMCQsBatch(batch.content, batch.questions, idx + 1, batches.length, batch.keyIndex)
     );
     const results = await Promise.all(batchPromises);
     
@@ -513,7 +525,39 @@ Generate EXACTLY ${numQuestions} high-quality MCQs covering ALL concepts with SS
     // Remove duplicates to ensure unique questions
     const uniqueMcqs = deduplicateMCQs(allMcqs);
     
-    setStatus(`Generated ${uniqueMcqs.length} unique MCQs covering ALL ${pages.length} pages`);
+    // If we got fewer MCQs than requested, generate more to fill the gap
+    if (uniqueMcqs.length < numQuestions * 0.9) {
+      const shortfall = numQuestions - uniqueMcqs.length;
+      setStatus(`📊 Generated ${uniqueMcqs.length}/${numQuestions}. Filling gap of ${shortfall} MCQs...`);
+      
+      // Generate additional MCQs from random page chunks
+      const additionalBatches = Math.ceil(shortfall / 10);
+      const additionalPromises = [];
+      
+      for (let i = 0; i < additionalBatches; i++) {
+        const randomPage = pages[Math.floor(Math.random() * pages.length)];
+        const keyIndex = i % NUM_API_KEYS;
+        additionalPromises.push(
+          generateMCQsBatch(randomPage, Math.min(10, shortfall), i + 1, additionalBatches, keyIndex)
+        );
+      }
+      
+      const additionalResults = await Promise.all(additionalPromises);
+      const additionalMcqs = additionalResults.flat();
+      
+      // Add non-duplicate additional MCQs
+      const existingQuestions = new Set(uniqueMcqs.map(m => normalizeQuestion(m.question)));
+      for (const mcq of additionalMcqs) {
+        const normalized = normalizeQuestion(mcq.question);
+        if (!existingQuestions.has(normalized)) {
+          uniqueMcqs.push(mcq);
+          existingQuestions.add(normalized);
+          if (uniqueMcqs.length >= numQuestions) break;
+        }
+      }
+    }
+    
+    setStatus(`✅ Generated ${uniqueMcqs.length} unique MCQs covering ALL ${pages.length} pages`);
     
     return uniqueMcqs;
   };
