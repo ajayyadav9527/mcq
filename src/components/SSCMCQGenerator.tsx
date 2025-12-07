@@ -23,21 +23,37 @@ declare global {
 }
 
 const GEMINI_API_KEYS = [
-  "AIzaSyDWlAsiGp4UPF-cUwU4sVRvj1SU9qDUyt4",
-  "AIzaSyDxofRJS6ULe4hE7ihiFIj1wnzI5bpnlSE",
-  "AIzaSyBvdNScFHwsP7LKl4BY2Q1-psgZwdXEbrU",
-  "AIzaSyAvYefxap7CVpbsEu-wQ_LfllMoK80qeAM",
-  "AIzaSyA8smfKLKNt1zPhZJs6R6bL_CwNAejje18",
-  "AIzaSyDXY3OmkeDouvJIQfZLToaq5uIQnRi-_fs",
-  "AIzaSyDC-bIzdacH5RoPI3kIbihmVaIe_mIUAqI",
-  "AIzaSyB2Ga7EGjUs7Y6nj385V_-ZDdjvoNbc3uM",
-  "AIzaSyAqrv36ro2zwXbVTSvqmWFPsPPptdAD0rE",
-  "AIzaSyAzR-Ege3fmjAWp1f6WCrN_YnJOUVJEM-U"
+  "AIzaSyB9D0i4P-BNAg08w-l_bUYGVAKsY6A8ktM",
+  "AIzaSyC-bXSa1oHLwN0ADNVLuAs8aktAwAjrLJ0",
+  "AIzaSyBZPqpVzroe6ae6g3xGtcb5oFaYYOmL_ho",
+  "AIzaSyBZ_mLqQkpREhzEsnmWZwrTkgZW7tJYkKw",
+  "AIzaSyD_oc-jL7eKjuD2U60503dxJj3Ab1iljjU",
+  "AIzaSyDTLysb6FG3QQ64SxNzjtD1v-nJuCA5_Y0",
+  "AIzaSyDahVZTcDREankQEAgvodqv9nAgiYfv3yY"
 ];
 
-// Track which API keys are rate limited
-const rateLimitedKeys = new Set<number>();
-let lastKeyIndex = 0;
+// Track API key usage with timestamps for smart recovery
+interface KeyUsage {
+  requestCount: number;
+  lastUsed: number;
+  rateLimited: boolean;
+  rateLimitedAt: number;
+}
+
+const keyUsageMap = new Map<number, KeyUsage>();
+
+// Initialize key usage tracking
+const initKeyUsage = () => {
+  for (let i = 0; i < GEMINI_API_KEYS.length; i++) {
+    keyUsageMap.set(i, {
+      requestCount: 0,
+      lastUsed: 0,
+      rateLimited: false,
+      rateLimitedAt: 0
+    });
+  }
+};
+initKeyUsage();
 
 // Helper to normalize question text for comparison
 const normalizeQuestion = (q: string | undefined | null): string => {
@@ -58,29 +74,88 @@ const deduplicateMCQs = (mcqs: MCQ[]): MCQ[] => {
   });
 };
 
-// Get next available API key (skip rate limited ones)
+// Smart API key selection - picks key with LOWEST usage and LONGEST recovery time
 const getNextApiKey = (): { key: string; index: number } | null => {
-  // Try all keys starting from last used
+  const now = Date.now();
+  const RATE_LIMIT_RECOVERY_MS = 60000; // 1 minute recovery window
+  const MAX_REQUESTS_PER_KEY = 15; // Max requests before rotation
+  
+  let bestKey: { index: number; score: number } | null = null;
+  
   for (let i = 0; i < GEMINI_API_KEYS.length; i++) {
-    const idx = (lastKeyIndex + i) % GEMINI_API_KEYS.length;
-    if (!rateLimitedKeys.has(idx)) {
-      lastKeyIndex = (idx + 1) % GEMINI_API_KEYS.length;
-      return { key: GEMINI_API_KEYS[idx], index: idx };
+    const usage = keyUsageMap.get(i) || { requestCount: 0, lastUsed: 0, rateLimited: false, rateLimitedAt: 0 };
+    
+    // Check if rate limited key has recovered
+    if (usage.rateLimited) {
+      if (now - usage.rateLimitedAt > RATE_LIMIT_RECOVERY_MS) {
+        // Key has recovered - reset it
+        keyUsageMap.set(i, {
+          requestCount: 0,
+          lastUsed: 0,
+          rateLimited: false,
+          rateLimitedAt: 0
+        });
+      } else {
+        // Still rate limited, skip
+        continue;
+      }
+    }
+    
+    // Calculate score: lower is better
+    // Factors: request count, time since last use
+    const timeSinceLastUse = now - usage.lastUsed;
+    const score = usage.requestCount * 1000 - timeSinceLastUse;
+    
+    if (!bestKey || score < bestKey.score) {
+      bestKey = { index: i, score };
     }
   }
+  
+  if (bestKey) {
+    const usage = keyUsageMap.get(bestKey.index) || { requestCount: 0, lastUsed: 0, rateLimited: false, rateLimitedAt: 0 };
+    keyUsageMap.set(bestKey.index, {
+      ...usage,
+      requestCount: usage.requestCount + 1,
+      lastUsed: now
+    });
+    return { key: GEMINI_API_KEYS[bestKey.index], index: bestKey.index };
+  }
+  
   return null; // All keys rate limited
 };
 
-// Reset rate limit tracking
+// Reset all API key usage tracking
 const resetApiUsage = () => {
-  rateLimitedKeys.clear();
-  lastKeyIndex = 0;
+  initKeyUsage();
+  console.log('API usage tracking reset');
 };
 
 // Mark a key as rate limited
 const markKeyRateLimited = (index: number) => {
-  rateLimitedKeys.add(index);
-  console.log(`API key ${index} rate limited. ${GEMINI_API_KEYS.length - rateLimitedKeys.size} keys remaining.`);
+  const usage = keyUsageMap.get(index) || { requestCount: 0, lastUsed: 0, rateLimited: false, rateLimitedAt: 0 };
+  keyUsageMap.set(index, {
+    ...usage,
+    rateLimited: true,
+    rateLimitedAt: Date.now()
+  });
+  
+  const availableKeys = Array.from(keyUsageMap.values()).filter(u => !u.rateLimited).length;
+  console.log(`API key ${index + 1} rate limited. ${availableKeys}/${GEMINI_API_KEYS.length} keys available.`);
+};
+
+// Get available key count
+const getAvailableKeyCount = (): number => {
+  const now = Date.now();
+  const RATE_LIMIT_RECOVERY_MS = 60000;
+  let available = 0;
+  
+  for (let i = 0; i < GEMINI_API_KEYS.length; i++) {
+    const usage = keyUsageMap.get(i);
+    if (!usage || !usage.rateLimited || (now - usage.rateLimitedAt > RATE_LIMIT_RECOVERY_MS)) {
+      available++;
+    }
+  }
+  return available;
 };
 
 const getGeminiUrl = (key: string) => 
@@ -608,18 +683,24 @@ Generate EXACTLY ${numQuestions} MCQs now:`;
     const allMcqs: MCQ[] = [];
     const existingQuestions = new Set<string>();
     
-    // Process SEQUENTIALLY to avoid rate limiting
+    // Process SEQUENTIALLY with smart key rotation
     for (let i = 0; i < batches.length; i++) {
       const batch = batches[i];
       
-      // Check if all API keys are rate limited
-      const keyData = getNextApiKey();
-      if (!keyData) {
-        setError('⚠️ All API keys are rate limited. Please wait a few minutes and try again.');
-        break;
+      // Check available keys
+      const availableKeys = getAvailableKeyCount();
+      if (availableKeys === 0) {
+        setStatus('⏳ All keys cooling down. Waiting 30s for recovery...');
+        await new Promise(r => setTimeout(r, 30000));
+        
+        // Check again after wait
+        if (getAvailableKeyCount() === 0) {
+          setError('⚠️ All API keys are rate limited. Please wait a few minutes and try again.');
+          break;
+        }
       }
       
-      setStatus(`📝 ${batch.pageInfo}: Generating ${batch.questions} MCQs (${allMcqs.length}/${numQuestions} total)...`);
+      setStatus(`📝 ${batch.pageInfo}: Generating ${batch.questions} MCQs (${allMcqs.length}/${numQuestions} total) [${availableKeys}/7 keys ready]...`);
       
       const result = await generateMCQsBatch(batch.content, batch.questions, i + 1, batches.length, batch.pageInfo, setStatus);
       
@@ -648,35 +729,41 @@ Generate EXACTLY ${numQuestions} MCQs now:`;
         break;
       }
       
-      // Delay between batches to avoid rate limiting (5 seconds)
+      // Smart delay between batches - shorter with more available keys
       if (i < batches.length - 1) {
-        setStatus(`⏳ Waiting 5s before next page to avoid rate limits...`);
-        await new Promise(r => setTimeout(r, 5000));
+        const delayMs = Math.max(2000, 8000 - (getAvailableKeyCount() * 800)); // 2s-8s based on key availability
+        setStatus(`⏳ Rotating keys... next batch in ${Math.round(delayMs/1000)}s`);
+        await new Promise(r => setTimeout(r, delayMs));
       }
     }
 
-    // If still short, try gap-filling with specific pages
+    // If still short, try gap-filling with smart key recovery
     let attempts = 0;
-    const maxAttempts = 3;
+    const maxAttempts = 5;
     
     while (allMcqs.length < numQuestions * 0.9 && attempts < maxAttempts && pages.length > 0) {
-      const keyData = getNextApiKey();
-      if (!keyData) {
-        setError('⚠️ All API keys are rate limited. Generated ' + allMcqs.length + ' MCQs.');
-        break;
+      // Wait for keys to recover if needed
+      const availableKeys = getAvailableKeyCount();
+      if (availableKeys === 0) {
+        setStatus('⏳ Keys recovering... waiting 20s');
+        await new Promise(r => setTimeout(r, 20000));
+        if (getAvailableKeyCount() === 0) {
+          setError(`⚠️ Generated ${allMcqs.length}/${numQuestions} MCQs. Keys need more time to recover.`);
+          break;
+        }
       }
       
       attempts++;
       const shortfall = numQuestions - allMcqs.length;
-      setStatus(`📊 Gap-filling: need ${shortfall} more MCQs (attempt ${attempts}/${maxAttempts})...`);
+      setStatus(`📊 Gap-filling: need ${shortfall} more MCQs (attempt ${attempts}/${maxAttempts}) [${getAvailableKeyCount()}/7 keys]...`);
       
-      await new Promise(r => setTimeout(r, 5000)); // Wait before gap-filling
+      await new Promise(r => setTimeout(r, 3000)); // Short delay between gap-fill attempts
       
       const pageIndex = attempts % pages.length;
       const page = pages[pageIndex];
       
       if (page && typeof page === 'string' && page.trim().length > 100) {
-        const questionsNeeded = Math.min(10, shortfall);
+        const questionsNeeded = Math.min(15, shortfall);
         const result = await generateMCQsBatch(page, questionsNeeded, attempts, maxAttempts, `Page ${pageIndex + 1} (gap-fill)`, setStatus);
         
         if (result && Array.isArray(result)) {
@@ -825,7 +912,7 @@ Generate EXACTLY ${numQuestions} MCQs now:`;
       <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-2xl p-8 my-8">
         <div className="text-center mb-6">
           <div className="inline-block bg-gradient-to-r from-cyan-500 to-blue-600 text-white px-6 py-2 rounded-full text-sm font-bold mb-4 shadow-lg">
-            🚀 10 API KEYS • AUTO COVERAGE • 100% UNIQUE
+            🚀 7 API KEYS • SMART ROTATION • AUTO RECOVERY
           </div>
           <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
             ⚡ SSC MCQ Generator Ultra
