@@ -23,13 +23,22 @@ declare global {
 }
 
 const GEMINI_API_KEYS = [
+  // Original 7 keys
   "AIzaSyB9D0i4P-BNAg08w-l_bUYGVAKsY6A8ktM",
   "AIzaSyC-bXSa1oHLwN0ADNVLuAs8aktAwAjrLJ0",
   "AIzaSyBZPqpVzroe6ae6g3xGtcb5oFaYYOmL_ho",
   "AIzaSyBZ_mLqQkpREhzEsnmWZwrTkgZW7tJYkKw",
   "AIzaSyD_oc-jL7eKjuD2U60503dxJj3Ab1iljjU",
   "AIzaSyDTLysb6FG3QQ64SxNzjtD1v-nJuCA5_Y0",
-  "AIzaSyDahVZTcDREankQEAgvodqv9nAgiYfv3yY"
+  "AIzaSyDahVZTcDREankQEAgvodqv9nAgiYfv3yY",
+  // Additional 7 keys for maximum throughput
+  "AIzaSyAw2LOIPMKZIWmZdaAbbTLxWGEQDIdeM7E",
+  "AIzaSyCWcJevfYi7G8qbVlW5DMtGYm1pVaUrG8s",
+  "AIzaSyDCVxxpCIRYeDSML5zMe24QSVAUbAsltnA",
+  "AIzaSyAVQSf_NhEEnEK1M-bYA6MWvvLtXxT493I",
+  "AIzaSyDo4Acg7ieEZzl5OmpEyGI4XrfPQmEO0gM",
+  "AIzaSyDTKxCFWMXHscES9NY0AeIKtB08EDPNXCU",
+  "AIzaSyAD0WqCmhzt8OxD4S6nXwAHSiQXOBaNHDA"
 ];
 
 // Track API key usage with timestamps for smart recovery
@@ -77,8 +86,8 @@ const deduplicateMCQs = (mcqs: MCQ[]): MCQ[] => {
 // Smart API key selection - picks key with LOWEST usage and LONGEST recovery time
 const getNextApiKey = (): { key: string; index: number } | null => {
   const now = Date.now();
-  const RATE_LIMIT_RECOVERY_MS = 60000; // 1 minute recovery window
-  const MAX_REQUESTS_PER_KEY = 15; // Max requests before rotation
+  const RATE_LIMIT_RECOVERY_MS = 90000; // 90 seconds recovery window (increased for 14 keys)
+  const MAX_REQUESTS_PER_KEY = 10; // Max requests before rotation (reduced for better distribution)
   
   let bestKey: { index: number; score: number } | null = null;
   
