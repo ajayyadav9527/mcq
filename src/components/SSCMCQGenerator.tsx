@@ -22,6 +22,9 @@ declare global {
   }
 }
 
+// Hugging Face API Key (H)
+const HUGGINGFACE_API_KEY_H = "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";
+
 const GEMINI_API_KEYS = [
   // Original 7 keys
   "AIzaSyB9D0i4P-BNAg08w-l_bUYGVAKsY6A8ktM",
