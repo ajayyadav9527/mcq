@@ -26,22 +26,16 @@ declare global {
 const HUGGINGFACE_API_KEY_H = "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";
 
 const GEMINI_API_KEYS = [
-  // Original 7 keys
-  "AIzaSyB9D0i4P-BNAg08w-l_bUYGVAKsY6A8ktM",
-  "AIzaSyC-bXSa1oHLwN0ADNVLuAs8aktAwAjrLJ0",
-  "AIzaSyBZPqpVzroe6ae6g3xGtcb5oFaYYOmL_ho",
-  "AIzaSyBZ_mLqQkpREhzEsnmWZwrTkgZW7tJYkKw",
-  "AIzaSyD_oc-jL7eKjuD2U60503dxJj3Ab1iljjU",
-  "AIzaSyDTLysb6FG3QQ64SxNzjtD1v-nJuCA5_Y0",
-  "AIzaSyDahVZTcDREankQEAgvodqv9nAgiYfv3yY",
-  // Additional 7 keys for maximum throughput
-  "AIzaSyAw2LOIPMKZIWmZdaAbbTLxWGEQDIdeM7E",
-  "AIzaSyCWcJevfYi7G8qbVlW5DMtGYm1pVaUrG8s",
-  "AIzaSyDCVxxpCIRYeDSML5zMe24QSVAUbAsltnA",
-  "AIzaSyAVQSf_NhEEnEK1M-bYA6MWvvLtXxT493I",
-  "AIzaSyDo4Acg7ieEZzl5OmpEyGI4XrfPQmEO0gM",
-  "AIzaSyDTKxCFWMXHscES9NY0AeIKtB08EDPNXCU",
-  "AIzaSyAD0WqCmhzt8OxD4S6nXwAHSiQXOBaNHDA"
+  "AIzaSyDaMKqIv0evt32sVY6N5w8HFTic4NzRhUc",
+  "AIzaSyAQ3VC1tksiEBo-xSlNE6P6W3MxRo3GvNQ",
+  "AIzaSyDpQ2lkx1ZmmFFE8bkc59fJPPRBmDEZU90",
+  "AIzaSyC0HJ-pFCWHBIdHRL6ZcKrFwFwIsz2NOFg",
+  "AIzaSyCmMK71BMnDfIs1JUlQhWWQAVICjNTlhIU",
+  "AIzaSyA5ZOeU_NzZ76Ailw8VeiMOcDF24iPOOmA",
+  "AIzaSyCpfyj2aaiw0Qum6VhOSSTpqDXu6W6qrT0",
+  "AIzaSyBHyFyd4sL6FIVcGwlEYPnXRfNDz6B7YmA",
+  "AIzaSyDjugbcD8ILBrvryhA212dK71sHkl1L89Q",
+  "AIzaSyBX6-KmAvjviv4eP3PnNZkppiFp7DjUuqY"
 ];
 
 // Track API key usage with timestamps for smart recovery
@@ -89,7 +83,7 @@ const deduplicateMCQs = (mcqs: MCQ[]): MCQ[] => {
 // Smart API key selection - picks key with LOWEST usage and LONGEST recovery time
 const getNextApiKey = (): { key: string; index: number } | null => {
   const now = Date.now();
-  const RATE_LIMIT_RECOVERY_MS = 90000; // 90 seconds recovery window (increased for 14 keys)
+  const RATE_LIMIT_RECOVERY_MS = 90000; // 90 seconds recovery window
   const MAX_REQUESTS_PER_KEY = 10; // Max requests before rotation (reduced for better distribution)
   
   let bestKey: { index: number; score: number } | null = null;
@@ -217,7 +211,7 @@ const getKeyStatuses = (): KeyStatus[] => {
 
 const SSCMCQGenerator = () => {
   const navigate = useNavigate();
-  const [exam, setExam] = useState('SSC CGL');
+  const [difficulty, setDifficulty] = useState('hard+easy');
   const [count, setCount] = useState(10);
   const [autoCount, setAutoCount] = useState(true);
   const [estimatedCount, setEstimatedCount] = useState(0);
@@ -549,7 +543,7 @@ const SSCMCQGenerator = () => {
     const trendStartDate = new Date(currentDate.getFullYear() - 1, currentDate.getMonth() - 6, 1);
     const trendPeriod = `${trendStartDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })} to ${currentDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`;
 
-    const prompt = `You are a SENIOR ${exam} exam paper setter with 20+ years experience. Your MCQs are used in actual SSC exams.
+    const prompt = `You are a SENIOR SSC exam paper setter with 20+ years experience. Your MCQs are used in actual SSC exams.
 
 🎯 MISSION: Generate ${numQuestions} EXAM-QUALITY MCQs that are 100% ACCURATE and VERIFIABLE from the content below.
 
@@ -557,7 +551,7 @@ const SSCMCQGenerator = () => {
 1. ✅ 100% FACTUAL ACCURACY - Every fact must be directly from the PDF content
 2. ✅ ZERO ASSUMPTIONS - Never guess, assume, or use external knowledge
 3. ✅ UNIQUE CONCEPTS - Each question tests a completely different concept
-4. ✅ SSC EXAM PATTERN - Match recent ${exam} question styles from ${trendPeriod}
+4. ✅ SSC EXAM PATTERN - Match recent SSC question styles from ${trendPeriod}
 5. ✅ VERIFIABLE ANSWERS - Each correct answer must be provable from the PDF text
 
 🎓 SSC EXAM TRENDS TO FOCUS (${trendPeriod}):
@@ -781,7 +775,7 @@ Generate EXACTLY ${numQuestions} premium-quality MCQs now:`;
         }
       }
       
-      setStatus(`📝 ${batch.pageInfo}: Generating ${batch.questions} MCQs (${allMcqs.length}/${numQuestions} total) [${availableKeys}/7 keys ready]...`);
+      setStatus(`📝 ${batch.pageInfo}: Generating ${batch.questions} MCQs (${allMcqs.length}/${numQuestions} total) [${availableKeys}/10 keys ready]...`);
       
       const result = await generateMCQsBatch(batch.content, batch.questions, i + 1, batches.length, batch.pageInfo, setStatus);
       
@@ -836,7 +830,7 @@ Generate EXACTLY ${numQuestions} premium-quality MCQs now:`;
       
       attempts++;
       const shortfall = numQuestions - allMcqs.length;
-      setStatus(`📊 Gap-filling: need ${shortfall} more MCQs (attempt ${attempts}/${maxAttempts}) [${getAvailableKeyCount()}/7 keys]...`);
+      setStatus(`📊 Gap-filling: need ${shortfall} more MCQs (attempt ${attempts}/${maxAttempts}) [${getAvailableKeyCount()}/10 keys]...`);
       
       await new Promise(r => setTimeout(r, 3000)); // Short delay between gap-fill attempts
       
@@ -993,7 +987,7 @@ Generate EXACTLY ${numQuestions} premium-quality MCQs now:`;
       <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-2xl p-8 my-8">
         <div className="text-center mb-6">
           <div className="inline-block bg-gradient-to-r from-cyan-500 to-blue-600 text-white px-6 py-2 rounded-full text-sm font-bold mb-4 shadow-lg">
-            🚀 14 API KEYS • SMART ROTATION • AUTO RECOVERY
+            🚀 10 API KEYS • SMART ROTATION • AUTO RECOVERY
           </div>
           <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
             ⚡ SSC MCQ Generator Ultra
@@ -1006,18 +1000,16 @@ Generate EXACTLY ${numQuestions} premium-quality MCQs now:`;
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <div>
-            <label className="block text-gray-700 font-semibold mb-2">📚 SSC Exam</label>
+            <label className="block text-gray-700 font-semibold mb-2">🎯 Difficulty Level</label>
             <select 
-              value={exam} 
-              onChange={(e) => setExam(e.target.value)}
+              value={difficulty} 
+              onChange={(e) => setDifficulty(e.target.value)}
               className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none transition-colors"
               disabled={processing || !pdfLibLoaded}
             >
-              <option>SSC CGL</option>
-              <option>SSC CHSL</option>
-              <option>SSC MTS</option>
-              <option>SSC GD</option>
-              <option>SSC CPO</option>
+              <option value="hard+easy">Hard + Easy (Recommended)</option>
+              <option value="hard">Hard Only</option>
+              <option value="easy">Easy Only</option>
             </select>
           </div>
           
@@ -1140,7 +1132,7 @@ Generate EXACTLY ${numQuestions} premium-quality MCQs now:`;
                 </span>
               </div>
             </div>
-            <div className="grid grid-cols-7 gap-2">
+            <div className="grid grid-cols-5 gap-2">
               {keyStatuses.map((key) => (
                 <div
                   key={key.index}
@@ -1180,16 +1172,16 @@ Generate EXACTLY ${numQuestions} premium-quality MCQs now:`;
               ))}
             </div>
             <div className="mt-3 flex justify-between text-xs text-gray-400">
-              <span>Available: {keyStatuses.filter(k => k.status !== 'rate-limited' && k.status !== 'recovering').length}/14</span>
+              <span>Available: {keyStatuses.filter(k => k.status !== 'rate-limited' && k.status !== 'recovering').length}/10</span>
               <span>Total Requests: {keyStatuses.reduce((sum, k) => sum + k.requestCount, 0)}</span>
             </div>
           </div>
         )}
 
         <div className="bg-gradient-to-r from-cyan-50 to-blue-50 border-l-4 border-cyan-500 p-4 mb-4 rounded-lg">
-          <p className="font-bold text-cyan-800 mb-2">⚡ Speed Optimizations (14 API Keys):</p>
+          <p className="font-bold text-cyan-800 mb-2">⚡ Speed Optimizations (10 API Keys):</p>
           <ul className="text-sm text-cyan-700 space-y-1 ml-4">
-            <li>✓ <strong>14 Gemini API keys rotating</strong> for parallel processing</li>
+            <li>✓ <strong>10 Gemini API keys rotating</strong> for parallel processing</li>
             <li>✓ <strong>Automatic deduplication</strong> ensures 100% unique questions</li>
             <li>✓ 40-page batches with 20 concurrent operations</li>
             <li>✓ <strong>Up to 500 MCQs</strong> per generation</li>
