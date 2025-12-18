@@ -26,6 +26,7 @@ declare global {
 const HUGGINGFACE_API_KEY_H = "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";
 
 const GEMINI_API_KEYS = [
+  // Set 1 (10 keys)
   "AIzaSyDaMKqIv0evt32sVY6N5w8HFTic4NzRhUc",
   "AIzaSyAQ3VC1tksiEBo-xSlNE6P6W3MxRo3GvNQ",
   "AIzaSyDpQ2lkx1ZmmFFE8bkc59fJPPRBmDEZU90",
@@ -35,7 +36,18 @@ const GEMINI_API_KEYS = [
   "AIzaSyCpfyj2aaiw0Qum6VhOSSTpqDXu6W6qrT0",
   "AIzaSyBHyFyd4sL6FIVcGwlEYPnXRfNDz6B7YmA",
   "AIzaSyDjugbcD8ILBrvryhA212dK71sHkl1L89Q",
-  "AIzaSyBX6-KmAvjviv4eP3PnNZkppiFp7DjUuqY"
+  "AIzaSyBX6-KmAvjviv4eP3PnNZkppiFp7DjUuqY",
+  // Set 2 (10 keys)
+  "AIzaSyCoIsb3c7cnEH49p7VleJswDX8MZsy5upo",
+  "AIzaSyAKQviGfQb_fSTGgqFqxZdM4g1hdENLdBI",
+  "AIzaSyBIgAFjjnWKLbNsshS4CkE_-AVahWrdObo",
+  "AIzaSyDw7PmxuyCjxpgjBgu-1DQw2ymmjR52hSU",
+  "AIzaSyCj80wHEVGUCkE4068zUuVU7YvajeLXYQE",
+  "AIzaSyDL5jOYx70OdA7cXbz_ueJ1A9zzwgspEYg",
+  "AIzaSyA9uN5rkiCKOIcHYAH0C5k0N8WbKVnB-jQ",
+  "AIzaSyDHPZso9b7hyxR93VBQzODT6GfDolsjaXA",
+  "AIzaSyA9qqLOI3NIzj4JHiVnKoIz8o4Ayyd4bTg",
+  "AIzaSyCUc_-CJRlRyZBZFzHKzdEBLtZx8RBqRsc"
 ];
 
 // Track API key usage with timestamps for smart recovery
@@ -987,7 +999,7 @@ Generate EXACTLY ${numQuestions} premium-quality MCQs now:`;
       <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-2xl p-8 my-8">
         <div className="text-center mb-6">
           <div className="inline-block bg-gradient-to-r from-cyan-500 to-blue-600 text-white px-6 py-2 rounded-full text-sm font-bold mb-4 shadow-lg">
-            🚀 10 API KEYS • SMART ROTATION • AUTO RECOVERY
+            🚀 20 API KEYS • SMART ROTATION • AUTO RECOVERY
           </div>
           <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
             ⚡ SSC MCQ Generator Ultra
@@ -1132,7 +1144,7 @@ Generate EXACTLY ${numQuestions} premium-quality MCQs now:`;
                 </span>
               </div>
             </div>
-            <div className="grid grid-cols-5 gap-2">
+            <div className="grid grid-cols-10 gap-2">
               {keyStatuses.map((key) => (
                 <div
                   key={key.index}
@@ -1172,16 +1184,16 @@ Generate EXACTLY ${numQuestions} premium-quality MCQs now:`;
               ))}
             </div>
             <div className="mt-3 flex justify-between text-xs text-gray-400">
-              <span>Available: {keyStatuses.filter(k => k.status !== 'rate-limited' && k.status !== 'recovering').length}/10</span>
+              <span>Available: {keyStatuses.filter(k => k.status !== 'rate-limited' && k.status !== 'recovering').length}/20</span>
               <span>Total Requests: {keyStatuses.reduce((sum, k) => sum + k.requestCount, 0)}</span>
             </div>
           </div>
         )}
 
         <div className="bg-gradient-to-r from-cyan-50 to-blue-50 border-l-4 border-cyan-500 p-4 mb-4 rounded-lg">
-          <p className="font-bold text-cyan-800 mb-2">⚡ Speed Optimizations (10 API Keys):</p>
+          <p className="font-bold text-cyan-800 mb-2">⚡ Speed Optimizations (20 API Keys):</p>
           <ul className="text-sm text-cyan-700 space-y-1 ml-4">
-            <li>✓ <strong>10 Gemini API keys rotating</strong> for parallel processing</li>
+            <li>✓ <strong>20 Gemini API keys rotating</strong> for parallel processing</li>
             <li>✓ <strong>Automatic deduplication</strong> ensures 100% unique questions</li>
             <li>✓ 40-page batches with 20 concurrent operations</li>
             <li>✓ <strong>Up to 500 MCQs</strong> per generation</li>
