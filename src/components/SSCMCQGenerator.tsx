@@ -535,7 +535,7 @@ const SSCMCQGenerator = () => {
     return finalContent;
   };
 
-  const generateMCQsBatch = async (content: string, numQuestions: number, batchNum: number, totalBatches: number, pageInfo: string, setStatusFn: (s: string) => void): Promise<MCQ[]> => {
+  const generateMCQsBatch = async (content: string, numQuestions: number, batchNum: number, totalBatches: number, pageInfo: string, setStatusFn: (s: string) => void, difficultyLevel: string = 'hard+easy'): Promise<MCQ[]> => {
     // Guard against invalid inputs
     if (!content || typeof content !== 'string' || content.trim().length < 50) {
       console.log(`Batch ${batchNum}: Skipping - content too short or invalid`);
@@ -555,9 +555,93 @@ const SSCMCQGenerator = () => {
     const trendStartDate = new Date(currentDate.getFullYear() - 1, currentDate.getMonth() - 6, 1);
     const trendPeriod = `${trendStartDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })} to ${currentDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`;
 
+    // EXACT DIFFICULTY LEVEL INSTRUCTIONS
+    let difficultyInstructions = '';
+    let questionTypeRatio = '';
+    
+    if (difficultyLevel === 'easy') {
+      difficultyInstructions = `
+🎯 DIFFICULTY LEVEL: EASY (Basic Recall Questions Only)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Generate ONLY EASY questions that test DIRECT RECALL of facts:
+• Simple "What is", "Who is", "When was" type questions
+• Direct fact-based questions with straightforward answers
+• Single-concept questions (no multi-step reasoning required)
+• Questions where the answer is EXPLICITLY stated in one sentence
+• Basic definition, name, date, place identification questions
+
+❌ DO NOT INCLUDE:
+• Application-based questions
+• Analysis or comparison questions  
+• Questions requiring inference or reasoning
+• "Which of the following" elimination-style questions
+• Questions combining multiple concepts
+
+✅ EASY QUESTION EXAMPLES:
+• "What is the capital of [country]?"
+• "Who founded [organization]?"
+• "In which year was [event] established?"
+• "What is [term] called?"
+• "[Person] is known as the father of ____?"`;
+      questionTypeRatio = '100% Basic Recall Questions';
+    } else if (difficultyLevel === 'hard') {
+      difficultyInstructions = `
+🎯 DIFFICULTY LEVEL: HARD (Complex Reasoning Questions Only)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Generate ONLY HARD questions that require DEEP ANALYSIS and REASONING:
+• Multi-step reasoning questions
+• Compare and contrast questions
+• Application of concepts to new scenarios
+• "Which of the following is INCORRECT" elimination questions
+• Questions combining 2-3 related concepts
+• Analytical questions requiring inference
+• Assertion-Reason type questions
+• Statement-based questions (Which statements are correct?)
+
+❌ DO NOT INCLUDE:
+• Simple recall questions
+• Direct "What is" or "Who is" questions
+• Single-fact identification questions
+• Questions with obvious answers
+
+✅ HARD QUESTION EXAMPLES:
+• "Which of the following statements about [topic] is/are INCORRECT?"
+• "Consider the following statements... Which is/are correct?"
+• "Arrange the following [events] in chronological order"
+• "Match List-I with List-II and select the correct answer"
+• "The [concept] differs from [concept] in terms of..."
+• "If [scenario], then which of the following would be true?"`;
+      questionTypeRatio = '100% Complex Reasoning Questions';
+    } else {
+      // hard+easy (default - balanced mix)
+      difficultyInstructions = `
+🎯 DIFFICULTY LEVEL: MIXED (50% Easy + 50% Hard)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Generate a BALANCED MIX of EXACTLY 50% Easy and 50% Hard questions:
+
+📗 EASY QUESTIONS (50% of total - ${Math.ceil(numQuestions/2)} questions):
+• Simple "What is", "Who is", "When was" type questions
+• Direct fact recall from single sentences
+• Basic definition and identification questions
+
+📕 HARD QUESTIONS (50% of total - ${Math.floor(numQuestions/2)} questions):
+• Multi-step reasoning and analysis questions
+• "Which of the following is INCORRECT" type
+• Compare/contrast and application questions
+• Statement-based analytical questions
+
+⚠️ STRICT REQUIREMENT: Alternate between Easy and Hard questions.
+• Q1: Easy, Q2: Hard, Q3: Easy, Q4: Hard... and so on
+• Each question must be clearly either Easy OR Hard level
+• Do NOT make all questions the same difficulty`;
+      questionTypeRatio = '50% Basic Recall + 50% Complex Reasoning (Alternating)';
+    }
+
     const prompt = `You are a SENIOR SSC exam paper setter with 20+ years experience. Your MCQs are used in actual SSC exams.
 
-🎯 MISSION: Generate ${numQuestions} EXAM-QUALITY MCQs that are 100% ACCURATE and VERIFIABLE from the content below.
+${difficultyInstructions}
+
+📊 QUESTION TYPE RATIO: ${questionTypeRatio}
 
 📋 QUALITY STANDARDS (NON-NEGOTIABLE):
 1. ✅ 100% FACTUAL ACCURACY - Every fact must be directly from the PDF content
@@ -565,6 +649,7 @@ const SSCMCQGenerator = () => {
 3. ✅ UNIQUE CONCEPTS - Each question tests a completely different concept
 4. ✅ SSC EXAM PATTERN - Match recent SSC question styles from ${trendPeriod}
 5. ✅ VERIFIABLE ANSWERS - Each correct answer must be provable from the PDF text
+6. ✅ EXACT DIFFICULTY MATCH - Questions MUST match the specified difficulty level
 
 🎓 SSC EXAM TRENDS TO FOCUS (${trendPeriod}):
 - Important dates, years, and historical events
@@ -577,7 +662,7 @@ const SSCMCQGenerator = () => {
 
 📝 STRICT OUTPUT FORMAT:
 
-Q1. [Clear, exam-style question testing ONE specific fact from PDF]
+Q1. [Clear, exam-style question - MUST match specified difficulty level]
 A. [Plausible option]
 B. [Plausible option]
 C. [Plausible option]
@@ -594,11 +679,12 @@ Q2. [Next question...]
 - Use simple English suitable for Class 10 students
 - Include specific names, dates, numbers exactly as written in PDF
 - Never generate questions about topics not covered in the content
+- ⚡ DIFFICULTY MUST MATCH: Generate ONLY ${difficultyLevel.toUpperCase()} level questions as specified above
 
 📄 PDF CONTENT (${pageInfo}):
 ${safeContent}
 
-Generate EXACTLY ${numQuestions} premium-quality MCQs now:`;
+Generate EXACTLY ${numQuestions} premium-quality ${difficultyLevel.toUpperCase()} MCQs now:`;
 
     // Try up to 10 different API keys
     for (let attempt = 0; attempt < GEMINI_API_KEYS.length; attempt++) {
@@ -754,7 +840,7 @@ Generate EXACTLY ${numQuestions} premium-quality MCQs now:`;
     }
 
     console.log(`Created ${batches.length} batches with EQUAL page weightage to generate ${numQuestions} MCQs`);
-    setStatus(`⚡ Generating ${numQuestions} MCQs with EQUAL distribution across ${pages.length} pages (${baseQuestionsPerPage}${extraQuestions > 0 ? `-${baseQuestionsPerPage + 1}` : ''} per page)...`);
+    setStatus(`⚡ Generating ${numQuestions} ${difficulty.toUpperCase()} MCQs with EQUAL distribution across ${pages.length} pages...`);
 
     const allMcqs: MCQ[] = [];
     const existingQuestions = new Set<string>();
@@ -778,7 +864,7 @@ Generate EXACTLY ${numQuestions} premium-quality MCQs now:`;
       
       setStatus(`📝 ${batch.pageInfo}: Generating ${batch.questions} MCQs (${allMcqs.length}/${numQuestions} total) [${availableKeys}/20 keys ready]...`);
       
-      const result = await generateMCQsBatch(batch.content, batch.questions, i + 1, batches.length, batch.pageInfo, setStatus);
+      const result = await generateMCQsBatch(batch.content, batch.questions, i + 1, batches.length, batch.pageInfo, setStatus, difficulty);
       
       // Add unique MCQs with validation
       if (result && Array.isArray(result)) {
@@ -840,7 +926,7 @@ Generate EXACTLY ${numQuestions} premium-quality MCQs now:`;
       
       if (page && typeof page === 'string' && page.trim().length > 100) {
         const questionsNeeded = Math.min(15, shortfall);
-        const result = await generateMCQsBatch(page, questionsNeeded, attempts, maxAttempts, `Page ${pageIndex + 1} (gap-fill)`, setStatus);
+        const result = await generateMCQsBatch(page, questionsNeeded, attempts, maxAttempts, `Page ${pageIndex + 1} (gap-fill)`, setStatus, difficulty);
         
         if (result && Array.isArray(result)) {
           for (const mcq of result) {
