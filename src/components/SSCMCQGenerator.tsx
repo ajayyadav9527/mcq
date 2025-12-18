@@ -722,50 +722,39 @@ Generate EXACTLY ${numQuestions} premium-quality MCQs now:`;
 
     console.log(`Processing ${pages.length} content chunks for ${numQuestions} MCQs`);
 
-    // Calculate MCQs per page for EQUAL WEIGHTAGE
-    const mcqsPerPage = Math.ceil(numQuestions / pages.length);
-    const totalBatches = pages.length;
+    // EQUAL PROPORTIONAL DISTRIBUTION across ALL pages
+    // Base questions per page + distribute remainder evenly
+    const baseQuestionsPerPage = Math.floor(numQuestions / pages.length);
+    const extraQuestions = numQuestions % pages.length;
     
-    // Create batches with EQUAL DISTRIBUTION across all pages
+    // Create batches with STRICTLY EQUAL DISTRIBUTION across all pages
     const batches: { content: string; questions: number; pageInfo: string }[] = [];
-    let remainingQuestions = numQuestions;
     
-    for (let i = 0; i < pages.length && remainingQuestions > 0; i++) {
+    for (let i = 0; i < pages.length; i++) {
       const page = pages[i];
-      const questionsForThisPage = Math.min(mcqsPerPage, remainingQuestions);
+      // First 'extraQuestions' pages get 1 extra question each for perfect distribution
+      const questionsForThisPage = baseQuestionsPerPage + (i < extraQuestions ? 1 : 0);
       
       if (page && typeof page === 'string' && page.trim().length > 50 && questionsForThisPage > 0) {
         batches.push({
           content: page,
           questions: questionsForThisPage,
-          pageInfo: `Page ${i + 1} of ${pages.length}`
+          pageInfo: `Page ${i + 1}/${pages.length}`
         });
-        remainingQuestions -= questionsForThisPage;
       }
     }
     
-    // If we still need more questions, distribute remaining across pages
-    if (remainingQuestions > 0) {
-      let pageIdx = 0;
-      while (remainingQuestions > 0 && pageIdx < pages.length) {
-        const extraQuestions = Math.min(5, remainingQuestions);
-        batches.push({
-          content: pages[pageIdx],
-          questions: extraQuestions,
-          pageInfo: `Page ${pageIdx + 1} (extra)`
-        });
-        remainingQuestions -= extraQuestions;
-        pageIdx++;
-      }
-    }
+    // Verify total questions match requested
+    const totalPlanned = batches.reduce((sum, b) => sum + b.questions, 0);
+    console.log(`Distribution: ${batches.map(b => b.questions).join(', ')} = ${totalPlanned} MCQs across ${pages.length} pages`);
     
     if (batches.length === 0) {
       setError('Could not create processing batches.');
       return [];
     }
 
-    console.log(`Created ${batches.length} batches with equal page weightage to generate ${numQuestions} MCQs`);
-    setStatus(`⚡ Generating EXACTLY ${numQuestions} MCQs with equal weightage across ${pages.length} pages...`);
+    console.log(`Created ${batches.length} batches with EQUAL page weightage to generate ${numQuestions} MCQs`);
+    setStatus(`⚡ Generating ${numQuestions} MCQs with EQUAL distribution across ${pages.length} pages (${baseQuestionsPerPage}${extraQuestions > 0 ? `-${baseQuestionsPerPage + 1}` : ''} per page)...`);
 
     const allMcqs: MCQ[] = [];
     const existingQuestions = new Set<string>();
@@ -787,7 +776,7 @@ Generate EXACTLY ${numQuestions} premium-quality MCQs now:`;
         }
       }
       
-      setStatus(`📝 ${batch.pageInfo}: Generating ${batch.questions} MCQs (${allMcqs.length}/${numQuestions} total) [${availableKeys}/10 keys ready]...`);
+      setStatus(`📝 ${batch.pageInfo}: Generating ${batch.questions} MCQs (${allMcqs.length}/${numQuestions} total) [${availableKeys}/20 keys ready]...`);
       
       const result = await generateMCQsBatch(batch.content, batch.questions, i + 1, batches.length, batch.pageInfo, setStatus);
       
