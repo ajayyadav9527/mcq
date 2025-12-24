@@ -52,6 +52,10 @@ const DonationButton: React.FC<DonationButtonProps> = ({
     setShowQr(!showQr);
   };
 
+  const openUpiApp = () => {
+    window.location.href = upiDeepLink;
+  };
+
   return (
     <div className={`inline-flex flex-col items-center ${className}`}>
       {/* Main Donate Button */}
@@ -83,16 +87,30 @@ const DonationButton: React.FC<DonationButtonProps> = ({
         </TooltipContent>
       </Tooltip>
 
-      {/* Pay by Scan option - only show on mobile if QR is configured */}
-      {isMobile && settings?.qrUrl && (
-        <button
-          onClick={toggleQr}
-          className="mt-2 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <QrCode className="w-3.5 h-3.5" />
-          <span>Pay by Scan</span>
-          {showQr ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-        </button>
+      {/* Secondary options */}
+      {settings?.qrUrl && (
+        <div className="mt-2 flex items-center gap-3">
+          {/* Pay by Scan - available on both mobile and desktop */}
+          <button
+            onClick={toggleQr}
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <QrCode className="w-3.5 h-3.5" />
+            <span>Scan QR</span>
+            {showQr ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+          </button>
+
+          {/* Pay via App - on mobile only as secondary option when QR is open */}
+          {isMobile && showQr && (
+            <button
+              onClick={openUpiApp}
+              className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
+            >
+              <Heart className="w-3.5 h-3.5" />
+              <span>Open App</span>
+            </button>
+          )}
+        </div>
       )}
 
       {/* Inline QR Panel */}
