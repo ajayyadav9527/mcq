@@ -1,7 +1,6 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import * as bcrypt from "https://deno.land/x/bcrypt@v0.4.1/mod.ts";
 import { create, verify } from "https://deno.land/x/djwt@v3.0.2/mod.ts";
 import { crypto } from "https://deno.land/std@0.168.0/crypto/mod.ts";
 
@@ -13,6 +12,43 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const JWT_SECRET = Deno.env.get('ADMIN_JWT_SECRET')!;
+
+// Password verification using PBKDF2
+async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
+  try {
+    const encoder = new TextEncoder();
+    const combined = Uint8Array.from(atob(storedHash), c => c.charCodeAt(0));
+    const salt = combined.slice(0, 16);
+    const storedHashBytes = combined.slice(16);
+    
+    const keyMaterial = await crypto.subtle.importKey(
+      "raw",
+      encoder.encode(password),
+      "PBKDF2",
+      false,
+      ["deriveBits"]
+    );
+    const derivedBits = await crypto.subtle.deriveBits(
+      {
+        name: "PBKDF2",
+        salt: salt,
+        iterations: 100000,
+        hash: "SHA-256"
+      },
+      keyMaterial,
+      256
+    );
+    const derivedHash = new Uint8Array(derivedBits);
+    
+    if (derivedHash.length !== storedHashBytes.length) return false;
+    for (let i = 0; i < derivedHash.length; i++) {
+      if (derivedHash[i] !== storedHashBytes[i]) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // Create crypto key from secret
 async function getJwtKey() {
@@ -133,7 +169,7 @@ serve(async (req) => {
       }
 
       // Verify password
-      const passwordValid = await bcrypt.compare(password, admin.password_hash);
+      const passwordValid = await verifyPassword(password, admin.password_hash);
       
       if (!passwordValid) {
         // Increment failed attempts
