@@ -6,6 +6,44 @@ const MAX_API_KEYS = 50;
 // Storage key for localStorage
 const STORAGE_KEY = 'gemini_api_keys';
 
+// Default starter API keys
+const DEFAULT_API_KEYS = [
+  "AIzaSyDaMKqIv0evt32sVY6N5w8HFTic4NzRhUc",
+  "AIzaSyAQ3VC1tksiEBo-xSlNE6P6W3MxRo3GvNQ",
+  "AIzaSyDpQ2lkx1ZmmFFE8bkc59fJPPRBmDEZU90",
+  "AIzaSyC0HJ-pFCWHBIdHRL6ZcKrFwFwIsz2NOFg",
+  "AIzaSyCmMK71BMnDfIs1JUlQhWWQAVICjNTlhIU",
+  "AIzaSyA5ZOeU_NzZ76Ailw8VeiMOcDF24iPOOmA",
+  "AIzaSyCpfyj2aaiw0Qum6VhOSSTpqDXu6W6qrT0",
+  "AIzaSyBHyFyd4sL6FIVcGwlEYPnXRfNDz6B7YmA",
+  "AIzaSyDjugbcD8ILBrvryhA212dK71sHkl1L89Q",
+  "AIzaSyBX6-KmAvjviv4eP3PnNZkppiFp7DjUuqY",
+  "AIzaSyCoIsb3c7cnEH49p7VleJswDX8MZsy5upo",
+  "AIzaSyAKQviGfQb_fSTGgqFqxZdM4g1hdENLdBI",
+  "AIzaSyBIgAFjjnWKLbNsshS4CkE_-AVahWrdObo",
+  "AIzaSyDw7PmxuyCjxpgjBgu-1DQw2ymmjR52hSU",
+  "AIzaSyCj80wHEVGUCkE4068zUuVU7YvajeLXYQE",
+  "AIzaSyDL5jOYx70OdA7cXbz_ueJ1A9zzwgspEYg",
+  "AIzaSyA9uN5rkiCKOIcHYAH0C5k0N8WbKVnB-jQ",
+  "AIzaSyDHPZso9b7hyxR93VBQzODT6GfDolsjaXA",
+  "AIzaSyA9qqLOI3NIzj4JHiVnKoIz8o4Ayyd4bTg",
+  "AIzaSyCUc_-CJRlRyZBZFzHKzdEBLtZx8RBqRsc"
+];
+
+// Create default API key entries
+const createDefaultKeyEntries = (): ApiKeyEntry[] => {
+  return DEFAULT_API_KEYS.map(key => ({
+    key,
+    status: 'active' as const,
+    addedAt: Date.now(),
+    lastChecked: 0,
+    requestCount: 0,
+    lastUsed: 0,
+    rateLimited: false,
+    rateLimitedAt: 0
+  }));
+};
+
 export interface ApiKeyEntry {
   key: string;
   status: 'active' | 'inactive' | 'validating';
@@ -106,12 +144,15 @@ export const useApiKeyManager = (): UseApiKeyManagerReturn => {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored) as ApiKeyEntry[];
-        return parsed.map(k => ({ ...k, rateLimited: false, rateLimitedAt: 0 }));
+        if (parsed.length > 0) {
+          return parsed.map(k => ({ ...k, rateLimited: false, rateLimitedAt: 0 }));
+        }
       }
     } catch (e) {
       console.error('Failed to load API keys from storage:', e);
     }
-    return [];
+    // Return default keys if no stored keys found
+    return createDefaultKeyEntries();
   });
   
   const [isValidating, setIsValidating] = useState(false);
