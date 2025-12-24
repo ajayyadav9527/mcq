@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, RotateCcw, Home, Clock, CheckCircle2, XCircle, Circle, BookOpen } from 'lucide-react';
+import { ChevronLeft, ChevronRight, RotateCcw, Home, Clock, CheckCircle2, XCircle, Circle, BookOpen, Copy, ClipboardList } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface MCQ {
   question: string;
@@ -95,6 +96,47 @@ const Quiz = () => {
     if (q.selected === '') return 'skipped';
     if (q.selected === q.correct) return 'correct';
     return 'wrong';
+  };
+
+  // Format single question for copying
+  const formatQuestionText = (q: MCQ, index: number): string => {
+    const optionLabels = ['A', 'B', 'C', 'D'];
+    const correctLabel = q.correct.toUpperCase();
+    
+    let text = `Q${index + 1}. ${q.question}\n`;
+    q.options.forEach((opt, idx) => {
+      text += `${optionLabels[idx]}) ${opt.replace(/^[a-d]\)\s*/i, '')}\n`;
+    });
+    text += `\nCorrect Answer: ${correctLabel}\n`;
+    text += `\nExplanation: ${q.explanation || 'No explanation available.'}\n`;
+    text += `\n${'─'.repeat(50)}\n`;
+    
+    return text;
+  };
+
+  // Copy single question
+  const copyQuestion = (index: number) => {
+    const text = formatQuestionText(mcqs[index], index);
+    navigator.clipboard.writeText(text).then(() => {
+      toast.success(`Question ${index + 1} copied to clipboard!`);
+    }).catch(() => {
+      toast.error('Failed to copy question');
+    });
+  };
+
+  // Copy all questions
+  const copyAllQuestions = () => {
+    let allText = `📚 Quiz - ${mcqs.length} Questions\n${'═'.repeat(50)}\n\n`;
+    
+    mcqs.forEach((q, idx) => {
+      allText += formatQuestionText(q, idx) + '\n';
+    });
+    
+    navigator.clipboard.writeText(allText).then(() => {
+      toast.success(`All ${mcqs.length} questions copied to clipboard!`);
+    }).catch(() => {
+      toast.error('Failed to copy questions');
+    });
   };
 
   if (mcqs.length === 0) {
@@ -296,11 +338,29 @@ const Quiz = () => {
               {/* Question Header */}
               <div className="border-b border-border px-6 py-3 flex items-center justify-between bg-muted/50">
                 <span className="text-sm font-semibold text-primary">Question {currentIndex + 1} of {mcqs.length}</span>
-                <div className="w-32 bg-muted rounded-full h-2 overflow-hidden">
-                  <div 
-                    className="h-full bg-primary transition-all duration-300"
-                    style={{ width: `${((currentIndex + 1) / mcqs.length) * 100}%` }}
-                  />
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => copyQuestion(currentIndex)}
+                    className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                    title="Copy this question"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    Copy Q
+                  </button>
+                  <button
+                    onClick={copyAllQuestions}
+                    className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
+                    title="Copy all questions"
+                  >
+                    <ClipboardList className="w-3.5 h-3.5" />
+                    Copy All
+                  </button>
+                  <div className="w-24 bg-muted rounded-full h-2 overflow-hidden">
+                    <div 
+                      className="h-full bg-primary transition-all duration-300"
+                      style={{ width: `${((currentIndex + 1) / mcqs.length) * 100}%` }}
+                    />
+                  </div>
                 </div>
               </div>
 
