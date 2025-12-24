@@ -49,9 +49,29 @@ export function useAdminApi() {
 
       const { data, error } = await supabase.functions.invoke(url, invokeOptions);
 
+      // Check for auth errors in data response
+      if (data?.error === 'Unauthorized' || data?.error?.includes?.('token')) {
+        const refreshed = await refreshToken();
+        if (refreshed) {
+          const newToken = localStorage.getItem(ACCESS_TOKEN_KEY);
+          invokeOptions.headers.Authorization = `Bearer ${newToken}`;
+          const retryResult = await supabase.functions.invoke(url, invokeOptions);
+          if (retryResult.error) {
+            return { data: null, error: retryResult.error.message };
+          }
+          if (retryResult.data?.error) {
+            return { data: null, error: retryResult.data.error };
+          }
+          return { data: retryResult.data as T, error: null };
+        } else {
+          await logout();
+          return { data: null, error: 'Session expired' };
+        }
+      }
+
       if (error) {
         // If unauthorized, try to refresh
-        if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
+        if (error.message?.includes('401') || error.message?.includes('Unauthorized') || error.message?.includes('non-2xx')) {
           const refreshed = await refreshToken();
           if (refreshed) {
             // Retry with new token
