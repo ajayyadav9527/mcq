@@ -14,7 +14,233 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      admin_audit_logs: {
+        Row: {
+          action_type: string
+          admin_id: string | null
+          created_at: string
+          id: string
+          ip_address: string | null
+          metadata: Json | null
+          target_id: string | null
+          target_type: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          action_type: string
+          admin_id?: string | null
+          created_at?: string
+          id?: string
+          ip_address?: string | null
+          metadata?: Json | null
+          target_id?: string | null
+          target_type?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          action_type?: string
+          admin_id?: string | null
+          created_at?: string
+          id?: string
+          ip_address?: string | null
+          metadata?: Json | null
+          target_id?: string | null
+          target_type?: string | null
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "admin_audit_logs_admin_id_fkey"
+            columns: ["admin_id"]
+            isOneToOne: false
+            referencedRelation: "admins"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      admins: {
+        Row: {
+          created_at: string
+          email: string
+          failed_login_attempts: number
+          id: string
+          is_active: boolean
+          last_login_at: string | null
+          locked_until: string | null
+          password_hash: string
+          role: Database["public"]["Enums"]["admin_role"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          failed_login_attempts?: number
+          id?: string
+          is_active?: boolean
+          last_login_at?: string | null
+          locked_until?: string | null
+          password_hash: string
+          role?: Database["public"]["Enums"]["admin_role"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          failed_login_attempts?: number
+          id?: string
+          is_active?: boolean
+          last_login_at?: string | null
+          locked_until?: string | null
+          password_hash?: string
+          role?: Database["public"]["Enums"]["admin_role"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      api_usage: {
+        Row: {
+          created_at: string
+          date: string
+          endpoint: string
+          id: string
+          request_count: number
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          date?: string
+          endpoint: string
+          id?: string
+          request_count?: number
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          endpoint?: string
+          id?: string
+          request_count?: number
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "api_usage_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      refresh_tokens: {
+        Row: {
+          admin_id: string
+          created_at: string
+          expires_at: string
+          id: string
+          is_revoked: boolean
+          token_hash: string
+        }
+        Insert: {
+          admin_id: string
+          created_at?: string
+          expires_at: string
+          id?: string
+          is_revoked?: boolean
+          token_hash: string
+        }
+        Update: {
+          admin_id?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          is_revoked?: boolean
+          token_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "refresh_tokens_admin_id_fkey"
+            columns: ["admin_id"]
+            isOneToOne: false
+            referencedRelation: "admins"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      system_settings: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          key: string
+          updated_at: string
+          updated_by: string | null
+          value: Json
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          key: string
+          updated_at?: string
+          updated_by?: string | null
+          value?: Json
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          key?: string
+          updated_at?: string
+          updated_by?: string | null
+          value?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "system_settings_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "admins"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      users: {
+        Row: {
+          api_quota_daily: number
+          api_quota_monthly: number
+          api_quota_weekly: number
+          created_at: string
+          email: string | null
+          id: string
+          is_blocked: boolean
+          name: string | null
+          updated_at: string
+        }
+        Insert: {
+          api_quota_daily?: number
+          api_quota_monthly?: number
+          api_quota_weekly?: number
+          created_at?: string
+          email?: string | null
+          id?: string
+          is_blocked?: boolean
+          name?: string | null
+          updated_at?: string
+        }
+        Update: {
+          api_quota_daily?: number
+          api_quota_monthly?: number
+          api_quota_weekly?: number
+          created_at?: string
+          email?: string | null
+          id?: string
+          is_blocked?: boolean
+          name?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +249,7 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      admin_role: "SUPER_ADMIN" | "ADMIN"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +376,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      admin_role: ["SUPER_ADMIN", "ADMIN"],
+    },
   },
 } as const
