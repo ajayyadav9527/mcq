@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import BulkApiKeyManager from './BulkApiKeyManager';
+import { useApiKeyManager, ApiKeyStatus } from '@/hooks/useApiKeyManager';
 
 interface MCQ {
   question: string;
@@ -22,57 +24,6 @@ declare global {
   }
 }
 
-// Hugging Face API Key (H)
-const HUGGINGFACE_API_KEY_H = "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";
-
-const GEMINI_API_KEYS = [
-  // Set 1 (10 keys)
-  "AIzaSyDaMKqIv0evt32sVY6N5w8HFTic4NzRhUc",
-  "AIzaSyAQ3VC1tksiEBo-xSlNE6P6W3MxRo3GvNQ",
-  "AIzaSyDpQ2lkx1ZmmFFE8bkc59fJPPRBmDEZU90",
-  "AIzaSyC0HJ-pFCWHBIdHRL6ZcKrFwFwIsz2NOFg",
-  "AIzaSyCmMK71BMnDfIs1JUlQhWWQAVICjNTlhIU",
-  "AIzaSyA5ZOeU_NzZ76Ailw8VeiMOcDF24iPOOmA",
-  "AIzaSyCpfyj2aaiw0Qum6VhOSSTpqDXu6W6qrT0",
-  "AIzaSyBHyFyd4sL6FIVcGwlEYPnXRfNDz6B7YmA",
-  "AIzaSyDjugbcD8ILBrvryhA212dK71sHkl1L89Q",
-  "AIzaSyBX6-KmAvjviv4eP3PnNZkppiFp7DjUuqY",
-  // Set 2 (10 keys)
-  "AIzaSyCoIsb3c7cnEH49p7VleJswDX8MZsy5upo",
-  "AIzaSyAKQviGfQb_fSTGgqFqxZdM4g1hdENLdBI",
-  "AIzaSyBIgAFjjnWKLbNsshS4CkE_-AVahWrdObo",
-  "AIzaSyDw7PmxuyCjxpgjBgu-1DQw2ymmjR52hSU",
-  "AIzaSyCj80wHEVGUCkE4068zUuVU7YvajeLXYQE",
-  "AIzaSyDL5jOYx70OdA7cXbz_ueJ1A9zzwgspEYg",
-  "AIzaSyA9uN5rkiCKOIcHYAH0C5k0N8WbKVnB-jQ",
-  "AIzaSyDHPZso9b7hyxR93VBQzODT6GfDolsjaXA",
-  "AIzaSyA9qqLOI3NIzj4JHiVnKoIz8o4Ayyd4bTg",
-  "AIzaSyCUc_-CJRlRyZBZFzHKzdEBLtZx8RBqRsc"
-];
-
-// Track API key usage with timestamps for smart recovery
-interface KeyUsage {
-  requestCount: number;
-  lastUsed: number;
-  rateLimited: boolean;
-  rateLimitedAt: number;
-}
-
-const keyUsageMap = new Map<number, KeyUsage>();
-
-// Initialize key usage tracking
-const initKeyUsage = () => {
-  for (let i = 0; i < GEMINI_API_KEYS.length; i++) {
-    keyUsageMap.set(i, {
-      requestCount: 0,
-      lastUsed: 0,
-      rateLimited: false,
-      rateLimitedAt: 0
-    });
-  }
-};
-initKeyUsage();
-
 // Helper to normalize question text for comparison
 const normalizeQuestion = (q: string | undefined | null): string => {
   if (!q || typeof q !== 'string') return '';
@@ -92,137 +43,20 @@ const deduplicateMCQs = (mcqs: MCQ[]): MCQ[] => {
   });
 };
 
-// Smart API key selection - picks key with LOWEST usage and LONGEST recovery time
-const getNextApiKey = (): { key: string; index: number } | null => {
-  const now = Date.now();
-  const RATE_LIMIT_RECOVERY_MS = 90000; // 90 seconds recovery window
-  const MAX_REQUESTS_PER_KEY = 10; // Max requests before rotation (reduced for better distribution)
-  
-  let bestKey: { index: number; score: number } | null = null;
-  
-  for (let i = 0; i < GEMINI_API_KEYS.length; i++) {
-    const usage = keyUsageMap.get(i) || { requestCount: 0, lastUsed: 0, rateLimited: false, rateLimitedAt: 0 };
-    
-    // Check if rate limited key has recovered
-    if (usage.rateLimited) {
-      if (now - usage.rateLimitedAt > RATE_LIMIT_RECOVERY_MS) {
-        // Key has recovered - reset it
-        keyUsageMap.set(i, {
-          requestCount: 0,
-          lastUsed: 0,
-          rateLimited: false,
-          rateLimitedAt: 0
-        });
-      } else {
-        // Still rate limited, skip
-        continue;
-      }
-    }
-    
-    // Calculate score: lower is better
-    // Factors: request count, time since last use
-    const timeSinceLastUse = now - usage.lastUsed;
-    const score = usage.requestCount * 1000 - timeSinceLastUse;
-    
-    if (!bestKey || score < bestKey.score) {
-      bestKey = { index: i, score };
-    }
-  }
-  
-  if (bestKey) {
-    const usage = keyUsageMap.get(bestKey.index) || { requestCount: 0, lastUsed: 0, rateLimited: false, rateLimitedAt: 0 };
-    keyUsageMap.set(bestKey.index, {
-      ...usage,
-      requestCount: usage.requestCount + 1,
-      lastUsed: now
-    });
-    return { key: GEMINI_API_KEYS[bestKey.index], index: bestKey.index };
-  }
-  
-  return null; // All keys rate limited
-};
-
-// Reset all API key usage tracking
-const resetApiUsage = () => {
-  initKeyUsage();
-  console.log('API usage tracking reset');
-};
-
-// Mark a key as rate limited
-const markKeyRateLimited = (index: number) => {
-  const usage = keyUsageMap.get(index) || { requestCount: 0, lastUsed: 0, rateLimited: false, rateLimitedAt: 0 };
-  keyUsageMap.set(index, {
-    ...usage,
-    rateLimited: true,
-    rateLimitedAt: Date.now()
-  });
-  
-  const availableKeys = Array.from(keyUsageMap.values()).filter(u => !u.rateLimited).length;
-  console.log(`API key ${index + 1} rate limited. ${availableKeys}/${GEMINI_API_KEYS.length} keys available.`);
-};
-
-// Get available key count
-const getAvailableKeyCount = (): number => {
-  const now = Date.now();
-  const RATE_LIMIT_RECOVERY_MS = 60000;
-  let available = 0;
-  
-  for (let i = 0; i < GEMINI_API_KEYS.length; i++) {
-    const usage = keyUsageMap.get(i);
-    if (!usage || !usage.rateLimited || (now - usage.rateLimitedAt > RATE_LIMIT_RECOVERY_MS)) {
-      available++;
-    }
-  }
-  return available;
-};
-
 const getGeminiUrl = (key: string) => 
   `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
 
-// API Key status for real-time UI
-interface KeyStatus {
-  index: number;
-  status: 'idle' | 'active' | 'rate-limited' | 'recovering';
-  requestCount: number;
-  recoveryProgress: number; // 0-100%
-}
-
-// Get all key statuses for UI display
-const getKeyStatuses = (): KeyStatus[] => {
-  const now = Date.now();
-  const RATE_LIMIT_RECOVERY_MS = 90000;
-  
-  return Array.from({ length: GEMINI_API_KEYS.length }, (_, i) => {
-    const usage = keyUsageMap.get(i) || { requestCount: 0, lastUsed: 0, rateLimited: false, rateLimitedAt: 0 };
-    
-    let status: KeyStatus['status'] = 'idle';
-    let recoveryProgress = 100;
-    
-    if (usage.rateLimited) {
-      const elapsed = now - usage.rateLimitedAt;
-      if (elapsed < RATE_LIMIT_RECOVERY_MS) {
-        status = 'recovering';
-        recoveryProgress = Math.min(100, Math.round((elapsed / RATE_LIMIT_RECOVERY_MS) * 100));
-      } else {
-        status = 'idle';
-      }
-    } else if (usage.requestCount > 0 && now - usage.lastUsed < 5000) {
-      status = 'active';
-    } else if (usage.requestCount > 0) {
-      status = 'idle';
-    }
-    
-    return {
-      index: i,
-      status,
-      requestCount: usage.requestCount,
-      recoveryProgress
-    };
-  });
-};
-
 const SSCMCQGenerator = () => {
   const navigate = useNavigate();
+  const {
+    apiKeys,
+    getNextAvailableKey,
+    markKeyRateLimited,
+    resetKeyUsage,
+    getAvailableKeyCount,
+    getKeyStatuses
+  } = useApiKeyManager();
+  
   const [difficulty, setDifficulty] = useState('hard+easy');
   const [count, setCount] = useState(10);
   const [autoCount, setAutoCount] = useState(true);
@@ -232,9 +66,11 @@ const SSCMCQGenerator = () => {
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const [pdfLibLoaded, setPdfLibLoaded] = useState(false);
-  const [keyStatuses, setKeyStatuses] = useState<KeyStatus[]>(getKeyStatuses());
+  const [keyStatuses, setKeyStatuses] = useState<ApiKeyStatus[]>(getKeyStatuses());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const processingRef = useRef({ startTime: 0, completed: 0 });
+  
+  const totalKeys = apiKeys.length;
   
   // Update key statuses every 500ms during processing
   useEffect(() => {
@@ -245,7 +81,7 @@ const SSCMCQGenerator = () => {
     }, 500);
     
     return () => clearInterval(interval);
-  }, [processing]);
+  }, [processing, getKeyStatuses]);
 
   useEffect(() => {
     const loadPdfLib = async () => {
@@ -407,8 +243,9 @@ const SSCMCQGenerator = () => {
   const processPageWithOCR = async (pdf: any, pageNum: number, retryCount = 0): Promise<string | null> => {
     try {
       const base64Data = await extractPageImage(pdf, pageNum);
-      const keyIndex = (pageNum + retryCount) % GEMINI_API_KEYS.length;
-      const apiKey = GEMINI_API_KEYS[keyIndex];
+      const keyData = getNextAvailableKey();
+      if (!keyData) return null;
+      const apiKey = keyData.key;
       
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000);
@@ -687,8 +524,8 @@ ${safeContent}
 Generate EXACTLY ${numQuestions} premium-quality ${difficultyLevel.toUpperCase()} MCQs now:`;
 
     // Try up to 10 different API keys
-    for (let attempt = 0; attempt < GEMINI_API_KEYS.length; attempt++) {
-      const keyData = getNextApiKey();
+    for (let attempt = 0; attempt < Math.max(10, totalKeys); attempt++) {
+      const keyData = getNextAvailableKey();
       if (!keyData) {
         console.log(`Batch ${batchNum}: All API keys rate limited!`);
         return [];
@@ -722,7 +559,7 @@ Generate EXACTLY ${numQuestions} premium-quality ${difficultyLevel.toUpperCase()
           console.log(`Batch ${batchNum} API error: ${status} on key ${keyData.index}`);
           
           if (status === 429) {
-            markKeyRateLimited(keyData.index);
+            markKeyRateLimited(keyData.key);
             await new Promise(r => setTimeout(r, 2000));
             continue;
           }
@@ -773,7 +610,7 @@ Generate EXACTLY ${numQuestions} premium-quality ${difficultyLevel.toUpperCase()
       return [];
     }
 
-    resetApiUsage();
+    resetKeyUsage();
     
     // Split content into pages - with safe string handling
     const safeContent = String(content || '');
@@ -1074,7 +911,7 @@ Generate EXACTLY ${numQuestions} premium-quality ${difficultyLevel.toUpperCase()
       <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-2xl p-8 my-8">
         <div className="text-center mb-6">
           <div className="inline-block bg-gradient-to-r from-cyan-500 to-blue-600 text-white px-6 py-2 rounded-full text-sm font-bold mb-4 shadow-lg">
-            🚀 20 API KEYS • SMART ROTATION • AUTO RECOVERY
+            🚀 {totalKeys > 0 ? `${totalKeys} API KEYS` : 'ADD API KEYS'} • SMART ROTATION • AUTO RECOVERY
           </div>
           <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
             ⚡ SSC MCQ Generator Ultra
@@ -1084,6 +921,18 @@ Generate EXACTLY ${numQuestions} premium-quality ${difficultyLevel.toUpperCase()
             <p className="text-sm text-amber-600 mt-2 animate-pulse">⏳ Loading PDF engine...</p>
           )}
         </div>
+
+        {/* Bulk API Key Manager */}
+        <div className="mb-6">
+          <BulkApiKeyManager />
+        </div>
+
+        {totalKeys === 0 && (
+          <div className="mb-6 p-4 bg-amber-50 border-2 border-amber-300 rounded-xl text-center">
+            <p className="text-amber-800 font-semibold">⚠️ Please add at least one Google Gemini API key to generate MCQs</p>
+            <p className="text-amber-600 text-sm mt-1">Expand the API Key Manager above to add your keys</p>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <div>
