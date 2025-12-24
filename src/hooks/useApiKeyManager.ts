@@ -6,7 +6,13 @@ const MAX_API_KEYS = 50;
 // Storage key for localStorage
 const STORAGE_KEY = 'gemini_api_keys';
 
-// Default starter API keys
+// Minimum time between uses of the same key (in ms) - gives each key proper rest time
+const MIN_KEY_COOLDOWN_MS = 3000; // 3 seconds minimum between same key uses
+
+// Rate limit recovery time
+const RATE_LIMIT_RECOVERY_MS = 90000; // 90 seconds recovery
+
+// Default starter API keys (proven working keys)
 const DEFAULT_API_KEYS = [
   "AIzaSyDaMKqIv0evt32sVY6N5w8HFTic4NzRhUc",
   "AIzaSyAQ3VC1tksiEBo-xSlNE6P6W3MxRo3GvNQ",
@@ -32,7 +38,7 @@ const DEFAULT_API_KEYS = [
 
 // Create default API key entries
 const createDefaultKeyEntries = (): ApiKeyEntry[] => {
-  return DEFAULT_API_KEYS.map(key => ({
+  return DEFAULT_API_KEYS.map((key, index) => ({
     key,
     status: 'active' as const,
     addedAt: Date.now(),
@@ -40,7 +46,8 @@ const createDefaultKeyEntries = (): ApiKeyEntry[] => {
     requestCount: 0,
     lastUsed: 0,
     rateLimited: false,
-    rateLimitedAt: 0
+    rateLimitedAt: 0,
+    order: index // Track original order for round-robin
   }));
 };
 
@@ -53,6 +60,7 @@ export interface ApiKeyEntry {
   lastUsed: number;
   rateLimited: boolean;
   rateLimitedAt: number;
+  order: number; // For round-robin rotation
 }
 
 export interface ValidationResult {
@@ -84,7 +92,7 @@ export interface ApiKeyStatus {
   recoveryProgress: number;
 }
 
-const RATE_LIMIT_RECOVERY_MS = 90000; // 90 seconds recovery
+// Note: RATE_LIMIT_RECOVERY_MS and MIN_KEY_COOLDOWN_MS defined at top of file
 
 // Validate if a key is a Google Gemini API key format
 const isGeminiKeyFormat = (key: string): boolean => {
@@ -138,6 +146,9 @@ const validateKeyWithApi = async (key: string): Promise<{ valid: boolean; error?
   }
 };
 
+// Track last used key index for round-robin rotation
+let lastUsedKeyIndex = -1;
+
 export const useApiKeyManager = (): UseApiKeyManagerReturn => {
   const [apiKeys, setApiKeys] = useState<ApiKeyEntry[]>(() => {
     try {
@@ -145,7 +156,13 @@ export const useApiKeyManager = (): UseApiKeyManagerReturn => {
       if (stored) {
         const parsed = JSON.parse(stored) as ApiKeyEntry[];
         if (parsed.length > 0) {
-          return parsed.map(k => ({ ...k, rateLimited: false, rateLimitedAt: 0 }));
+          // Ensure all stored keys have the order property
+          return parsed.map((k, i) => ({ 
+            ...k, 
+            rateLimited: false, 
+            rateLimitedAt: 0,
+            order: k.order ?? i 
+          }));
         }
       }
     } catch (e) {
@@ -228,7 +245,8 @@ export const useApiKeyManager = (): UseApiKeyManagerReturn => {
             requestCount: 0,
             lastUsed: 0,
             rateLimited: false,
-            rateLimitedAt: 0
+            rateLimitedAt: 0,
+            order: inactiveKeyIndex
           };
           return updated;
         });
@@ -253,18 +271,20 @@ export const useApiKeyManager = (): UseApiKeyManagerReturn => {
       }
       
       // Step 6: Add as new key
-      const newEntry: ApiKeyEntry = {
-        key,
-        status: 'active',
-        addedAt: Date.now(),
-        lastChecked: Date.now(),
-        requestCount: 0,
-        lastUsed: 0,
-        rateLimited: false,
-        rateLimitedAt: 0
-      };
-      
-      setApiKeys(prev => [...prev, newEntry]);
+      setApiKeys(prev => {
+        const newEntry: ApiKeyEntry = {
+          key,
+          status: 'active',
+          addedAt: Date.now(),
+          lastChecked: Date.now(),
+          requestCount: 0,
+          lastUsed: 0,
+          rateLimited: false,
+          rateLimitedAt: 0,
+          order: prev.length
+        };
+        return [...prev, newEntry];
+      });
       
       results.push({
         key,
@@ -289,11 +309,13 @@ export const useApiKeyManager = (): UseApiKeyManagerReturn => {
     setValidationResults([]);
   }, []);
   
-  // Get next available key for API calls
+  // Get next available key for API calls using STRICT ROUND-ROBIN rotation
+  // This ensures each key gets proper rest time between uses
   const getNextAvailableKey = useCallback((): { key: string; index: number } | null => {
     const now = Date.now();
-    let bestKey: { index: number; score: number } | null = null;
+    const activeKeys: { index: number; entry: ApiKeyEntry }[] = [];
     
+    // First pass: collect all available keys and recover rate-limited ones
     for (let i = 0; i < apiKeys.length; i++) {
       const entry = apiKeys[i];
       
@@ -302,41 +324,81 @@ export const useApiKeyManager = (): UseApiKeyManagerReturn => {
       // Check if rate limited key has recovered
       if (entry.rateLimited) {
         if (now - entry.rateLimitedAt > RATE_LIMIT_RECOVERY_MS) {
-          // Key has recovered
+          // Key has recovered - update it
           setApiKeys(prev => {
             const updated = [...prev];
             updated[i] = { ...updated[i], rateLimited: false, rateLimitedAt: 0 };
             return updated;
           });
-        } else {
-          continue;
+          activeKeys.push({ index: i, entry: { ...entry, rateLimited: false } });
         }
+        // Skip rate-limited keys that haven't recovered
+        continue;
       }
       
-      // Calculate score (lower is better)
-      const timeSinceLastUse = now - entry.lastUsed;
-      const score = entry.requestCount * 1000 - timeSinceLastUse;
+      activeKeys.push({ index: i, entry });
+    }
+    
+    if (activeKeys.length === 0) {
+      console.log('No available API keys');
+      return null;
+    }
+    
+    // STRICT ROUND-ROBIN: Find next key in sequence that has had enough cooldown
+    // Sort by order to maintain consistent rotation
+    activeKeys.sort((a, b) => a.entry.order - b.entry.order);
+    
+    // Find the next key after lastUsedKeyIndex
+    let selectedKey: { index: number; entry: ApiKeyEntry } | null = null;
+    
+    for (let attempt = 0; attempt < activeKeys.length; attempt++) {
+      // Calculate which key to try next in round-robin order
+      const candidateOrder = (lastUsedKeyIndex + 1 + attempt) % apiKeys.length;
+      const candidate = activeKeys.find(k => k.entry.order === candidateOrder) 
+        || activeKeys.find(k => k.entry.order > candidateOrder)
+        || activeKeys[0];
       
-      if (!bestKey || score < bestKey.score) {
-        bestKey = { index: i, score };
+      if (!candidate) continue;
+      
+      // Check if this key has had enough cooldown time
+      const timeSinceLastUse = now - candidate.entry.lastUsed;
+      
+      if (timeSinceLastUse >= MIN_KEY_COOLDOWN_MS || candidate.entry.lastUsed === 0) {
+        selectedKey = candidate;
+        break;
+      }
+      
+      // If this is the only key or we've tried all, use it anyway
+      if (activeKeys.length === 1 || attempt === activeKeys.length - 1) {
+        selectedKey = candidate;
+        break;
       }
     }
     
-    if (bestKey) {
-      const keyEntry = apiKeys[bestKey.index];
+    // Fallback: use the key with longest time since last use
+    if (!selectedKey) {
+      selectedKey = activeKeys.reduce((best, current) => 
+        (current.entry.lastUsed < best.entry.lastUsed) ? current : best
+      );
+    }
+    
+    if (selectedKey) {
+      // Update the last used key index
+      lastUsedKeyIndex = selectedKey.entry.order;
       
       // Update usage stats
       setApiKeys(prev => {
         const updated = [...prev];
-        updated[bestKey!.index] = {
-          ...updated[bestKey!.index],
-          requestCount: updated[bestKey!.index].requestCount + 1,
+        updated[selectedKey!.index] = {
+          ...updated[selectedKey!.index],
+          requestCount: updated[selectedKey!.index].requestCount + 1,
           lastUsed: now
         };
         return updated;
       });
       
-      return { key: keyEntry.key, index: bestKey.index };
+      console.log(`Using API key ${selectedKey.index + 1}/${apiKeys.length} (order: ${selectedKey.entry.order})`);
+      return { key: selectedKey.entry.key, index: selectedKey.index };
     }
     
     return null;
@@ -351,8 +413,9 @@ export const useApiKeyManager = (): UseApiKeyManagerReturn => {
     ));
   }, []);
   
-  // Reset all key usage stats
+  // Reset all key usage stats and round-robin counter
   const resetKeyUsage = useCallback(() => {
+    lastUsedKeyIndex = -1; // Reset round-robin counter
     setApiKeys(prev => prev.map(entry => ({
       ...entry,
       requestCount: 0,

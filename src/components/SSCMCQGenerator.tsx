@@ -242,15 +242,24 @@ const SSCMCQGenerator = () => {
 
   const processPageWithOCR = async (pdf: any, pageNum: number, retryCount = 0): Promise<string | null> => {
     try {
+      // Add small delay before OCR to respect rate limits
+      if (retryCount > 0) {
+        await new Promise(r => setTimeout(r, 2000 * retryCount));
+      }
+      
       const base64Data = await extractPageImage(pdf, pageNum);
       const keyData = getNextAvailableKey();
-      if (!keyData) return null;
-      const apiKey = keyData.key;
+      if (!keyData) {
+        console.log(`OCR page ${pageNum}: No available keys`);
+        return null;
+      }
+      
+      console.log(`OCR page ${pageNum}: Using key ${keyData.index + 1}/${totalKeys}`);
       
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000);
       
-      const response = await fetch(getGeminiUrl(apiKey), {
+      const response = await fetch(getGeminiUrl(keyData.key), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
@@ -278,14 +287,17 @@ const SSCMCQGenerator = () => {
         const data = await response.json();
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
         if (text && text.length > 20) return text;
-      } else if (response.status === 429 && retryCount < 2) {
-        // Rate limited - wait and retry with different key
-        await new Promise(r => setTimeout(r, 2000 * (retryCount + 1)));
-        return processPageWithOCR(pdf, pageNum, retryCount + 1);
+      } else if (response.status === 429) {
+        // Rate limited - mark key and retry with different key
+        markKeyRateLimited(keyData.key);
+        console.log(`OCR page ${pageNum}: Key ${keyData.index + 1} rate limited, retrying...`);
+        if (retryCount < 3) {
+          return processPageWithOCR(pdf, pageNum, retryCount + 1);
+        }
       }
     } catch (err: any) {
       if (err.name === 'AbortError' && retryCount < 2) {
-        await new Promise(r => setTimeout(r, 1000));
+        console.log(`OCR page ${pageNum}: Timeout, retrying...`);
         return processPageWithOCR(pdf, pageNum, retryCount + 1);
       }
       console.error(`OCR error page ${pageNum}:`, err?.message);
@@ -523,16 +535,24 @@ ${safeContent}
 
 Generate EXACTLY ${numQuestions} premium-quality ${difficultyLevel.toUpperCase()} MCQs now:`;
 
-    // Try up to 10 different API keys
-    for (let attempt = 0; attempt < Math.max(10, totalKeys); attempt++) {
+    // Try up to 10 different API keys with proper rotation
+    for (let attempt = 0; attempt < Math.min(10, totalKeys); attempt++) {
+      // Add delay before each attempt to give keys proper rest time
+      if (attempt > 0) {
+        await new Promise(r => setTimeout(r, 1500)); // 1.5s between retries
+      }
+      
       const keyData = getNextAvailableKey();
       if (!keyData) {
-        console.log(`Batch ${batchNum}: All API keys rate limited!`);
-        return [];
+        console.log(`Batch ${batchNum}: All API keys rate limited! Waiting 30s...`);
+        await new Promise(r => setTimeout(r, 30000));
+        const retryKey = getNextAvailableKey();
+        if (!retryKey) return [];
+        continue;
       }
       
       try {
-        setStatusFn(`📝 Batch ${batchNum}/${totalBatches} - ${pageInfo} (API key ${keyData.index + 1})...`);
+        setStatusFn(`📝 Batch ${batchNum}/${totalBatches} - ${pageInfo} (Key ${keyData.index + 1}/${totalKeys})...`);
         
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 120000); // 120s timeout for larger batches
@@ -556,15 +576,14 @@ Generate EXACTLY ${numQuestions} premium-quality ${difficultyLevel.toUpperCase()
         
         if (!response.ok) {
           const status = response.status;
-          console.log(`Batch ${batchNum} API error: ${status} on key ${keyData.index}`);
+          console.log(`Batch ${batchNum} API error: ${status} on key ${keyData.index + 1}`);
           
           if (status === 429) {
             markKeyRateLimited(keyData.key);
-            await new Promise(r => setTimeout(r, 2000));
-            continue;
+            console.log(`Key ${keyData.index + 1} rate limited, rotating to next key...`);
+            continue; // Rotation delay handled at top of loop
           }
           
-          await new Promise(r => setTimeout(r, 3000));
           continue;
         }
         
@@ -572,26 +591,23 @@ Generate EXACTLY ${numQuestions} premium-quality ${difficultyLevel.toUpperCase()
         const mcqText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
         
         if (!mcqText || typeof mcqText !== 'string' || mcqText.trim().length < 50) {
-          console.log(`Batch ${batchNum}: Empty/invalid response`);
-          await new Promise(r => setTimeout(r, 2000));
+          console.log(`Batch ${batchNum}: Empty/invalid response from key ${keyData.index + 1}`);
           continue;
         }
         
         const mcqs = parseMCQs(mcqText);
-        console.log(`Batch ${batchNum}: Generated ${mcqs.length}/${numQuestions} MCQs`);
+        console.log(`Batch ${batchNum}: Generated ${mcqs.length}/${numQuestions} MCQs using key ${keyData.index + 1}`);
         
         if (mcqs.length > 0) {
           return mcqs;
         }
         
-        await new Promise(r => setTimeout(r, 2000));
       } catch (err: any) {
         if (err.name === 'AbortError') {
-          console.log(`Batch ${batchNum}: Request timeout on key ${keyData.index}`);
+          console.log(`Batch ${batchNum}: Request timeout on key ${keyData.index + 1}`);
         } else {
-          console.error(`Batch ${batchNum} error:`, err?.message || err);
+          console.error(`Batch ${batchNum} error on key ${keyData.index + 1}:`, err?.message || err);
         }
-        await new Promise(r => setTimeout(r, 3000));
       }
     }
     
