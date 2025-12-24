@@ -30,16 +30,21 @@ export function useAdminApi() {
     }
 
     try {
-      const invokeOptions: { headers: Record<string, string>; body?: string } = {
-        headers: { 
+      const invokeOptions: {
+        headers: Record<string, string>;
+        method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+        body?: unknown;
+      } = {
+        method,
+        headers: {
           Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
+          'Content-Type': 'application/json',
+        },
       };
 
       // For non-GET requests, include body
       if (method !== 'GET' && body) {
-        invokeOptions.body = JSON.stringify(body);
+        invokeOptions.body = body;
       }
 
       const { data, error } = await supabase.functions.invoke(url, invokeOptions);
