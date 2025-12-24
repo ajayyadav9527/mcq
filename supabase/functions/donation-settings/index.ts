@@ -24,36 +24,29 @@ serve(async (req) => {
     if (req.method === 'GET') {
       console.log('Fetching donation settings...');
       
-      // Fetch the three donation-related settings
-      const { data: settings, error } = await supabase
+      // Fetch the donation_settings record
+      const { data: setting, error } = await supabase
         .from('system_settings')
-        .select('key, value')
-        .in('key', ['donation_enabled', 'donation_upi_id', 'donation_qr_url']);
+        .select('value')
+        .eq('key', 'donation_settings')
+        .single();
 
       if (error) {
         console.error('Error fetching settings:', error);
+        // Return default disabled state if not found
         return new Response(
-          JSON.stringify({ error: 'Failed to fetch settings' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          JSON.stringify({ enabled: false, upiId: null, qrUrl: null }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      // Build response object
+      // Extract values from the JSON object
+      const value = setting?.value || {};
       const result = {
-        enabled: false,
-        upiId: null as string | null,
-        qrUrl: null as string | null,
+        enabled: value.enabled === true,
+        upiId: value.upiId || null,
+        qrUrl: value.qrUrl || null,
       };
-
-      for (const setting of settings || []) {
-        if (setting.key === 'donation_enabled') {
-          result.enabled = setting.value === true || setting.value === 'true';
-        } else if (setting.key === 'donation_upi_id') {
-          result.upiId = typeof setting.value === 'string' ? setting.value : null;
-        } else if (setting.key === 'donation_qr_url') {
-          result.qrUrl = typeof setting.value === 'string' ? setting.value : null;
-        }
-      }
 
       console.log('Donation settings:', result);
 
