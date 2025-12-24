@@ -48,26 +48,26 @@ serve(async (req) => {
     const { data: existingAdmin } = await supabase
       .from('admins')
       .select('id')
-      .eq('email', 'admin@admin.com')
+      .eq('email', 'yadavaj9527@gmail.com')
       .maybeSingle();
 
     if (existingAdmin) {
       return new Response(JSON.stringify({ 
         message: 'Admin already exists',
-        email: 'admin@admin.com'
+        email: 'yadavaj9527@gmail.com'
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
     // Hash password using PBKDF2
-    const passwordHash = await hashPassword('Admin@123');
+    const passwordHash = await hashPassword('Deadman@9527');
 
     // Insert admin
     const { data: admin, error } = await supabase
       .from('admins')
       .insert({
-        email: 'admin@admin.com',
+        email: 'yadavaj9527@gmail.com',
         password_hash: passwordHash,
         role: 'SUPER_ADMIN',
         is_active: true
@@ -85,8 +85,7 @@ serve(async (req) => {
     return new Response(JSON.stringify({ 
       success: true,
       message: 'Admin created successfully',
-      email: 'admin@admin.com',
-      password: 'Admin@123'
+      email: 'yadavaj9527@gmail.com'
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
