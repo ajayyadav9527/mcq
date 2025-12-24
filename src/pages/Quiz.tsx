@@ -463,24 +463,9 @@ const Quiz = () => {
           <div className="w-72 bg-card border-l border-border p-4 overflow-y-auto hidden lg:block">
             <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide mb-4">Question Palette</h3>
             
-            {/* Legend */}
-            <div className="grid grid-cols-2 gap-2 mb-4 text-xs">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded bg-success flex items-center justify-center text-success-foreground text-xs">1</div>
-                <span className="text-muted-foreground">Correct</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded bg-destructive flex items-center justify-center text-destructive-foreground text-xs">1</div>
-                <span className="text-muted-foreground">Wrong</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded bg-warning flex items-center justify-center text-warning-foreground text-xs">1</div>
-                <span className="text-muted-foreground">Skipped</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded bg-muted flex items-center justify-center text-muted-foreground text-xs">1</div>
-                <span className="text-muted-foreground">Not visited</span>
-              </div>
+            {/* Donation Button */}
+            <div className="flex justify-center mb-4">
+              <DonationButton pauseAnimation={!showResult} />
             </div>
 
             <div className="border-t border-border pt-4">
@@ -519,10 +504,6 @@ const Quiz = () => {
               </button>
             </div>
 
-            {/* Donation Button */}
-            <div className="mt-4 flex justify-center">
-              <DonationButton pauseAnimation={!showResult} />
-            </div>
           </div>
         )}
       </div>
