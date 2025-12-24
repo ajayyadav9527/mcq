@@ -338,24 +338,26 @@ const Quiz = () => {
               {/* Question Header */}
               <div className="border-b border-border px-6 py-3 flex items-center justify-between bg-muted/50">
                 <span className="text-sm font-semibold text-primary">Question {currentIndex + 1} of {mcqs.length}</span>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center justify-end gap-2 flex-wrap">
                   <button
                     onClick={() => copyQuestion(currentIndex)}
-                    className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                    className="flex shrink-0 items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors whitespace-nowrap"
                     title="Copy this question"
+                    aria-label="Copy this question"
                   >
                     <Copy className="w-3.5 h-3.5" />
-                    Copy Q
+                    <span className="hidden sm:inline">Copy Q</span>
                   </button>
                   <button
                     onClick={copyAllQuestions}
-                    className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
+                    className="flex shrink-0 items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors whitespace-nowrap"
                     title="Copy all questions"
+                    aria-label="Copy all questions"
                   >
                     <ClipboardList className="w-3.5 h-3.5" />
-                    Copy All
+                    <span className="hidden sm:inline">Copy All</span>
                   </button>
-                  <div className="w-24 bg-muted rounded-full h-2 overflow-hidden">
+                  <div className="w-24 bg-muted rounded-full h-2 overflow-hidden shrink-0">
                     <div 
                       className="h-full bg-primary transition-all duration-300"
                       style={{ width: `${((currentIndex + 1) / mcqs.length) * 100}%` }}
