@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Heart, QrCode, ChevronDown, ChevronUp } from 'lucide-react';
 import { useDonationSettings } from '@/hooks/useDonationSettings';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -16,6 +16,17 @@ const DonationButton: React.FC<DonationButtonProps> = ({
 }) => {
   const { settings, loading } = useDonationSettings();
   const [showQr, setShowQr] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Detect mobile device
+  useEffect(() => {
+    const checkMobile = () => {
+      const userAgent = navigator.userAgent || navigator.vendor;
+      const mobileRegex = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i;
+      setIsMobile(mobileRegex.test(userAgent.toLowerCase()));
+    };
+    checkMobile();
+  }, []);
 
   // Don't render if loading, disabled, or no UPI ID
   if (loading) return null;
@@ -26,7 +37,15 @@ const DonationButton: React.FC<DonationButtonProps> = ({
   const upiDeepLink = `upi://pay?pa=${encodeURIComponent(settings.upiId)}&pn=${encodeURIComponent(appName)}&cu=INR`;
 
   const handleDonateClick = () => {
-    window.location.href = upiDeepLink;
+    if (isMobile) {
+      // Mobile: Open UPI app directly
+      window.location.href = upiDeepLink;
+    } else {
+      // Desktop: Toggle QR code
+      if (settings?.qrUrl) {
+        setShowQr(!showQr);
+      }
+    }
   };
 
   const toggleQr = () => {
@@ -64,8 +83,8 @@ const DonationButton: React.FC<DonationButtonProps> = ({
         </TooltipContent>
       </Tooltip>
 
-      {/* Pay by Scan option - only show if QR is configured */}
-      {settings?.qrUrl && (
+      {/* Pay by Scan option - only show on mobile if QR is configured */}
+      {isMobile && settings?.qrUrl && (
         <button
           onClick={toggleQr}
           className="mt-2 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
