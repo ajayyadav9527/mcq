@@ -10,13 +10,15 @@ import {
   Menu,
   X,
   Shield,
-  ChevronRight
+  ChevronRight,
+  Heart
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
   { path: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/admin/users', label: 'Users', icon: Users },
+  { path: '/admin/donations', label: 'Donations', icon: Heart },
   { path: '/admin/settings', label: 'Settings', icon: Settings },
 ];
 

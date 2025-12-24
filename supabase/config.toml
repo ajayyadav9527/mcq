@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.seed-admin]
 verify_jwt = true
+
+[functions.donation-settings]
+verify_jwt = false

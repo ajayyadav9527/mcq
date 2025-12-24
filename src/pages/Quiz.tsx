@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, RotateCcw, Home, Clock, CheckCircle2, XCircle, Circle, BookOpen, Copy, ClipboardList } from 'lucide-react';
+import { ChevronLeft, ChevronRight, RotateCcw, Home, Clock, CheckCircle2, XCircle, BookOpen, Copy, ClipboardList } from 'lucide-react';
 import { toast } from 'sonner';
-
+import DonationButton from '@/components/DonationButton';
 interface MCQ {
   question: string;
   options: string[];
@@ -307,28 +307,6 @@ const Quiz = () => {
         </div>
       </div>
 
-      {/* Stats Bar */}
-      <div className="bg-card border-b border-border px-4 py-2">
-        <div className="flex items-center justify-center gap-6 text-sm">
-          <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded-full bg-success"></div>
-            <span className="text-muted-foreground">Correct: <span className="font-semibold text-success">{correctCount}</span></span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded-full bg-destructive"></div>
-            <span className="text-muted-foreground">Wrong: <span className="font-semibold text-destructive">{wrongCount}</span></span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded-full bg-warning"></div>
-            <span className="text-muted-foreground">Skipped: <span className="font-semibold text-warning">{skippedCount}</span></span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded-full bg-muted-foreground/30"></div>
-            <span className="text-muted-foreground">Remaining: <span className="font-semibold">{notVisitedCount}</span></span>
-          </div>
-        </div>
-      </div>
-
       <div className="flex-1 flex">
         {/* Main Question Area */}
         <div className="flex-1 p-6 overflow-y-auto">
@@ -539,6 +517,11 @@ const Quiz = () => {
               >
                 Submit Quiz
               </button>
+            </div>
+
+            {/* Donation Button */}
+            <div className="mt-4 flex justify-center">
+              <DonationButton pauseAnimation={!showResult} />
             </div>
           </div>
         )}
