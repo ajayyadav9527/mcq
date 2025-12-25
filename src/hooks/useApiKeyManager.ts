@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 
 // Maximum number of API keys allowed
 const MAX_API_KEYS = 50;
@@ -12,8 +12,44 @@ const MIN_KEY_COOLDOWN_MS = 3000; // 3 seconds minimum between same key uses
 // Rate limit recovery time
 const RATE_LIMIT_RECOVERY_MS = 90000; // 90 seconds recovery
 
-// No default API keys - users must provide their own for security
-// Hardcoding API keys in client-side code exposes them to extraction and abuse
+// Default starter API keys (proven working keys)
+const DEFAULT_API_KEYS = [
+  "AIzaSyDaMKqIv0evt32sVY6N5w8HFTic4NzRhUc",
+  "AIzaSyAQ3VC1tksiEBo-xSlNE6P6W3MxRo3GvNQ",
+  "AIzaSyDpQ2lkx1ZmmFFE8bkc59fJPPRBmDEZU90",
+  "AIzaSyC0HJ-pFCWHBIdHRL6ZcKrFwFwIsz2NOFg",
+  "AIzaSyCmMK71BMnDfIs1JUlQhWWQAVICjNTlhIU",
+  "AIzaSyA5ZOeU_NzZ76Ailw8VeiMOcDF24iPOOmA",
+  "AIzaSyCpfyj2aaiw0Qum6VhOSSTpqDXu6W6qrT0",
+  "AIzaSyBHyFyd4sL6FIVcGwlEYPnXRfNDz6B7YmA",
+  "AIzaSyDjugbcD8ILBrvryhA212dK71sHkl1L89Q",
+  "AIzaSyBX6-KmAvjviv4eP3PnNZkppiFp7DjUuqY",
+  "AIzaSyCoIsb3c7cnEH49p7VleJswDX8MZsy5upo",
+  "AIzaSyAKQviGfQb_fSTGgqFqxZdM4g1hdENLdBI",
+  "AIzaSyBIgAFjjnWKLbNsshS4CkE_-AVahWrdObo",
+  "AIzaSyDw7PmxuyCjxpgjBgu-1DQw2ymmjR52hSU",
+  "AIzaSyCj80wHEVGUCkE4068zUuVU7YvajeLXYQE",
+  "AIzaSyDL5jOYx70OdA7cXbz_ueJ1A9zzwgspEYg",
+  "AIzaSyA9uN5rkiCKOIcHYAH0C5k0N8WbKVnB-jQ",
+  "AIzaSyDHPZso9b7hyxR93VBQzODT6GfDolsjaXA",
+  "AIzaSyA9qqLOI3NIzj4JHiVnKoIz8o4Ayyd4bTg",
+  "AIzaSyCUc_-CJRlRyZBZFzHKzdEBLtZx8RBqRsc"
+];
+
+// Create default API key entries
+const createDefaultKeyEntries = (): ApiKeyEntry[] => {
+  return DEFAULT_API_KEYS.map((key, index) => ({
+    key,
+    status: 'active' as const,
+    addedAt: Date.now(),
+    lastChecked: 0,
+    requestCount: 0,
+    lastUsed: 0,
+    rateLimited: false,
+    rateLimitedAt: 0,
+    order: index // Track original order for round-robin
+  }));
+};
 
 export interface ApiKeyEntry {
   key: string;
@@ -132,81 +168,19 @@ export const useApiKeyManager = (): UseApiKeyManagerReturn => {
     } catch (e) {
       console.error('Failed to load API keys from storage:', e);
     }
-    // Return empty array - backend keys will be fetched
-    return [];
+    // Return default keys if no stored keys found
+    return createDefaultKeyEntries();
   });
   
   const [isValidating, setIsValidating] = useState(false);
   const [validationResults, setValidationResults] = useState<ValidationResult[]>([]);
-  const backendKeysFetchedRef = useRef(false);
-  
-  // Fetch backend API keys on mount if no user keys exist
-  useEffect(() => {
-    const fetchBackendKeys = async () => {
-      // Only fetch once and only if no stored keys
-      if (backendKeysFetchedRef.current) return;
-      backendKeysFetchedRef.current = true;
-      
-      // Check if we already have keys from localStorage
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            console.log('Using stored API keys');
-            return;
-          }
-        } catch (e) {}
-      }
-      
-      try {
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-        if (!supabaseUrl) {
-          console.log('No Supabase URL configured');
-          return;
-        }
-        
-        const response = await fetch(`${supabaseUrl}/functions/v1/gemini-keys`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' }
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          if (data.keys && Array.isArray(data.keys) && data.keys.length > 0) {
-            console.log(`Loaded ${data.keys.length} backend Gemini API keys`);
-            const backendKeys: ApiKeyEntry[] = data.keys.map((key: string, index: number) => ({
-              key,
-              status: 'active' as const,
-              addedAt: Date.now(),
-              lastChecked: Date.now(),
-              requestCount: 0,
-              lastUsed: 0,
-              rateLimited: false,
-              rateLimitedAt: 0,
-              order: index
-            }));
-            setApiKeys(backendKeys);
-          }
-        } else {
-          console.log('Failed to fetch backend keys:', response.status);
-        }
-      } catch (err) {
-        console.error('Error fetching backend Gemini keys:', err);
-      }
-    };
-    
-    fetchBackendKeys();
-  }, []);
   
   // Save to localStorage when keys change
   useEffect(() => {
-    if (apiKeys.length > 0) {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(apiKeys));
-      } catch (e) {
-        console.error('Failed to save API keys to storage:', e);
-      }
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(apiKeys));
+    } catch (e) {
+      console.error('Failed to save API keys to storage:', e);
     }
   }, [apiKeys]);
   

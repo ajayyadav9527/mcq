@@ -327,71 +327,48 @@ const SSCMCQGenerator = () => {
     const pagesWithText = textPages.filter(p => p.text !== null).length;
     const needsOCR = pagesWithText < totalPages * 0.3;
     
-    console.log(`PDF analysis: ${pagesWithText}/${totalPages} pages have text. OCR needed: ${needsOCR}`);
-    
     if (needsOCR) {
-      // Check if we have API keys for OCR
-      const availableKeys = getAvailableKeyCount();
-      if (availableKeys === 0) {
-        setStatus('⚠️ No API keys available for OCR. Using available text only...');
-        console.log('No API keys available for OCR, falling back to text-only extraction');
-        // Fall back to using whatever text we got
-        for (const page of textPages) {
-          if (page.text) {
-            allContent.push(`--- Page ${page.pageNum} ---\n${page.text}\n`);
+      setStatus(`🔍 Scanned PDF detected. Running OCR on ${totalPages} pages...`);
+      
+      // Process pages sequentially with small delays to avoid rate limiting
+      const CONCURRENT_OCR = 3; // Lower concurrency for OCR
+      
+      for (let i = 0; i < totalPages; i += CONCURRENT_OCR) {
+        const batch: Promise<string | null>[] = [];
+        
+        for (let j = 0; j < CONCURRENT_OCR && i + j < totalPages; j++) {
+          const pageNum = i + j + 1;
+          const existingText = textPages[i + j]?.text;
+          
+          if (existingText) {
+            batch.push(Promise.resolve(existingText));
+          } else {
+            batch.push(
+              new Promise(async (resolve) => {
+                await new Promise(r => setTimeout(r, j * 500)); // Stagger requests
+                const text = await processPageWithOCR(pdf, pageNum);
+                resolve(text);
+              })
+            );
+          }
+        }
+        
+        const results = await Promise.all(batch);
+        
+        for (let j = 0; j < results.length; j++) {
+          const pageNum = i + j + 1;
+          const text = results[j];
+          if (text) {
+            allContent.push(`--- Page ${pageNum} ---\n${text}\n`);
           }
           processingRef.current.completed++;
           updateProgress(processingRef.current.completed, totalPages * 2);
         }
-      } else {
-        setStatus(`🔍 Scanned PDF detected. Running OCR on ${totalPages} pages with ${availableKeys} API keys...`);
         
-        // Process pages sequentially with small delays to avoid rate limiting
-        const CONCURRENT_OCR = Math.min(3, availableKeys); // Lower concurrency for OCR
-        let ocrSuccessCount = 0;
-        
-        for (let i = 0; i < totalPages; i += CONCURRENT_OCR) {
-          const batch: Promise<string | null>[] = [];
-          
-          for (let j = 0; j < CONCURRENT_OCR && i + j < totalPages; j++) {
-            const pageNum = i + j + 1;
-            const existingText = textPages[i + j]?.text;
-            
-            if (existingText) {
-              batch.push(Promise.resolve(existingText));
-            } else {
-              batch.push(
-                new Promise(async (resolve) => {
-                  await new Promise(r => setTimeout(r, j * 500)); // Stagger requests
-                  const text = await processPageWithOCR(pdf, pageNum);
-                  resolve(text);
-                })
-              );
-            }
-          }
-          
-          const results = await Promise.all(batch);
-          
-          for (let j = 0; j < results.length; j++) {
-            const pageNum = i + j + 1;
-            const text = results[j];
-            if (text) {
-              allContent.push(`--- Page ${pageNum} ---\n${text}\n`);
-              ocrSuccessCount++;
-            }
-            processingRef.current.completed++;
-            updateProgress(processingRef.current.completed, totalPages * 2);
-          }
-          
-          setStatus(`🔍 OCR Progress: ${ocrSuccessCount} pages extracted (${Math.round((i + CONCURRENT_OCR) / totalPages * 100)}%)...`);
-          
-          // Delay between batches
-          if (i + CONCURRENT_OCR < totalPages) {
-            await new Promise(r => setTimeout(r, 800));
-          }
+        // Delay between batches
+        if (i + CONCURRENT_OCR < totalPages) {
+          await new Promise(r => setTimeout(r, 800));
         }
-        
-        console.log(`OCR completed: ${ocrSuccessCount}/${totalPages} pages successfully extracted`);
       }
     } else {
       // Use extracted text
@@ -561,9 +538,7 @@ ${safeContent}
 Generate EXACTLY ${numQuestions} premium-quality ${difficultyLevel.toUpperCase()} MCQs now:`;
 
     // Try up to 10 different API keys with proper rotation
-    const maxRetries = Math.min(10, totalKeys * 2);
-    
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
+    for (let attempt = 0; attempt < Math.min(10, totalKeys); attempt++) {
       // Add delay before each attempt to give keys proper rest time
       if (attempt > 0) {
         await new Promise(r => setTimeout(r, 1500)); // 1.5s between retries
@@ -571,21 +546,15 @@ Generate EXACTLY ${numQuestions} premium-quality ${difficultyLevel.toUpperCase()
       
       const keyData = getNextAvailableKey();
       if (!keyData) {
-        console.log(`Batch ${batchNum}: No available API keys (attempt ${attempt + 1}/${maxRetries})`);
-        
-        // Wait for key recovery
-        if (attempt < maxRetries - 1) {
-          setStatusFn(`⏳ All keys busy, waiting for recovery... (${attempt + 1}/${maxRetries})`);
-          await new Promise(r => setTimeout(r, 15000)); // Wait 15s for recovery
-          continue;
-        }
-        
-        console.log(`Batch ${batchNum}: All keys exhausted after ${maxRetries} attempts`);
-        return [];
+        console.log(`Batch ${batchNum}: All API keys rate limited! Waiting 30s...`);
+        await new Promise(r => setTimeout(r, 30000));
+        const retryKey = getNextAvailableKey();
+        if (!retryKey) return [];
+        continue;
       }
       
       try {
-        setStatusFn(`📝 Batch ${batchNum}/${totalBatches} - ${pageInfo} (Key ${keyData.index + 1}/${totalKeys}, attempt ${attempt + 1})...`);
+        setStatusFn(`📝 Batch ${batchNum}/${totalBatches} - ${pageInfo} (Key ${keyData.index + 1}/${totalKeys})...`);
         
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 120000); // 120s timeout for larger batches
@@ -617,30 +586,14 @@ Generate EXACTLY ${numQuestions} premium-quality ${difficultyLevel.toUpperCase()
             continue; // Rotation delay handled at top of loop
           }
           
-          if (status === 400 || status === 403) {
-            console.log(`Key ${keyData.index + 1} invalid or revoked`);
-            // Don't retry with same key
-          }
-          
-          if (status >= 500) {
-            // Server error - retry with same approach
-            console.log(`Server error ${status}, retrying...`);
-          }
-          
           continue;
         }
         
         const data = await response.json();
         const mcqText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
         
-        // Check for safety blocks or empty responses
-        if (data?.candidates?.[0]?.finishReason === 'SAFETY') {
-          console.log(`Batch ${batchNum}: Response blocked by safety filter`);
-          continue;
-        }
-        
         if (!mcqText || typeof mcqText !== 'string' || mcqText.trim().length < 50) {
-          console.log(`Batch ${batchNum}: Empty/invalid response from key ${keyData.index + 1}. Response:`, JSON.stringify(data).substring(0, 200));
+          console.log(`Batch ${batchNum}: Empty/invalid response from key ${keyData.index + 1}`);
           continue;
         }
         
@@ -649,23 +602,17 @@ Generate EXACTLY ${numQuestions} premium-quality ${difficultyLevel.toUpperCase()
         
         if (mcqs.length > 0) {
           return mcqs;
-        } else {
-          console.log(`Batch ${batchNum}: Parse returned 0 MCQs. Raw response (first 500 chars):`, mcqText.substring(0, 500));
         }
         
       } catch (err: any) {
         if (err.name === 'AbortError') {
-          console.log(`Batch ${batchNum}: Request timeout on key ${keyData.index + 1}, retrying...`);
-        } else if (err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError')) {
-          console.log(`Batch ${batchNum}: Network error, retrying...`);
-          await new Promise(r => setTimeout(r, 3000)); // Extra delay for network issues
+          console.log(`Batch ${batchNum}: Request timeout on key ${keyData.index + 1}`);
         } else {
           console.error(`Batch ${batchNum} error on key ${keyData.index + 1}:`, err?.message || err);
         }
       }
     }
     
-    console.log(`Batch ${batchNum}: Failed after ${maxRetries} attempts`);
     return [];
   };
 
@@ -864,32 +811,15 @@ Generate EXACTLY ${numQuestions} premium-quality ${difficultyLevel.toUpperCase()
   };
 
   const parseMCQs = (text: string): MCQ[] => {
-    if (!text || typeof text !== 'string') {
-      console.log('parseMCQs: Invalid input - empty or not string');
-      return [];
-    }
+    if (!text || typeof text !== 'string') return [];
     
     const questions: MCQ[] = [];
-    
-    // Try multiple splitting patterns to handle different AI response formats
-    let qBlocks = text.split(/(?=Q\d+\.)/i).filter(b => b && b.trim());
-    
-    // Fallback: try splitting by numbered questions (1., 2., etc.)
-    if (qBlocks.length === 0) {
-      qBlocks = text.split(/(?=\d+\.\s+[A-Z])/).filter(b => b && b.trim());
-    }
-    
-    // Fallback: try splitting by "Question" keyword
-    if (qBlocks.length === 0) {
-      qBlocks = text.split(/(?=Question\s*\d*[\.:]\s*)/i).filter(b => b && b.trim());
-    }
-    
-    console.log(`parseMCQs: Found ${qBlocks.length} question blocks`);
+    const qBlocks = text.split(/(?=Q\d+\.)/i).filter(b => b && b.trim());
     
     for (const block of qBlocks) {
       if (!block) continue;
       const lines = block.split('\n').map(l => (l || '').trim()).filter(Boolean);
-      if (lines.length < 5) continue; // Minimum: question + 4 options
+      if (lines.length < 6) continue;
       
       const mcq: MCQ = {
         question: '',
@@ -904,29 +834,23 @@ Generate EXACTLY ${numQuestions} premium-quality ${difficultyLevel.toUpperCase()
       for (const line of lines) {
         if (!line) continue;
         
-        // Parse question number and text (multiple formats)
-        if (/^Q\d+\./i.test(line)) {
-          mcq.question = line.replace(/^Q\d+\.\s*/i, '') || '';
+        // Parse question number and text
+        if (/^Q\d+\./.test(line)) {
+          mcq.question = line.replace(/^Q\d+\.\s*/, '') || '';
         } 
-        else if (/^\d+\.\s+[A-Z]/i.test(line) && !mcq.question) {
-          mcq.question = line.replace(/^\d+\.\s*/, '') || '';
-        }
-        else if (/^Question\s*\d*[\.:]\s*/i.test(line) && !mcq.question) {
-          mcq.question = line.replace(/^Question\s*\d*[\.:]\s*/i, '') || '';
-        }
-        // Parse options A, B, C, D (multiple formats: "A.", "a)", "(A)", "A:")
-        else if (/^[\(\[]?[A-Da-d][\.\)\]:\s]/i.test(line) && mcq.options.length < 4) {
+        // Parse options A, B, C, D (both formats: "A." and "a)")
+        else if (/^[A-Da-d][\.\)]/i.test(line) && mcq.options.length < 4) {
           mcq.options.push(line);
         } 
-        // Parse correct answer (multiple formats)
-        else if (/^(Correct Answer|Answer|Correct)[\s:]/i.test(line)) {
+        // Parse correct answer
+        else if (/^Correct Answer:/i.test(line)) {
           const match = line.match(/\b[A-Da-d]\b/i);
           mcq.correct = match ? match[0].toLowerCase() : '';
           inExplanation = false;
         } 
-        // Parse explanation (multiple formats)
-        else if (/^(Explanation|Solution|Rationale)/i.test(line)) {
-          mcq.explanation = line.replace(/^(Explanation|Solution|Rationale)[^:]*:\s*/i, '') || '';
+        // Parse explanation (both "Explanation:" and "Explanation (Testbook Style):")
+        else if (/^Explanation/i.test(line)) {
+          mcq.explanation = line.replace(/^Explanation[^:]*:\s*/i, '') || '';
           inExplanation = true;
         } 
         // Continue explanation on next lines
@@ -934,41 +858,22 @@ Generate EXACTLY ${numQuestions} premium-quality ${difficultyLevel.toUpperCase()
           mcq.explanation += ' ' + line;
         } 
         // Continue question text if no options yet
-        else if (mcq.question && mcq.options.length === 0 && !line.match(/^[A-Da-d][\.\)]/i)) {
+        else if (mcq.question && mcq.options.length === 0) {
           mcq.question += ' ' + line;
         }
       }
       
       // Validate correct answer is a valid option (a-d)
       if (mcq.correct && !['a', 'b', 'c', 'd'].includes(mcq.correct)) {
-        // Try to extract from explanation if not found
-        const explanationMatch = mcq.explanation.match(/correct\s*(?:answer\s*)?(?:is\s*)?[:\s]*[\(\[]?([A-Da-d])[\)\]]?/i);
-        if (explanationMatch) {
-          mcq.correct = explanationMatch[1].toLowerCase();
-        } else {
-          mcq.correct = 'a'; // Default to first option if invalid
-        }
-      }
-      
-      // If still no correct answer, try to find it in the block
-      if (!mcq.correct) {
-        const blockMatch = block.match(/correct\s*(?:answer\s*)?(?:is\s*)?[:\s]*[\(\[]?([A-Da-d])[\)\]]?/i);
-        if (blockMatch) {
-          mcq.correct = blockMatch[1].toLowerCase();
-        }
+        mcq.correct = 'a'; // Default to first option if invalid
       }
       
       // Ensure question exists and is valid before adding
-      if (mcq.question && mcq.question.trim().length > 10 && mcq.options.length >= 4 && mcq.correct) {
-        // Trim to exactly 4 options
-        mcq.options = mcq.options.slice(0, 4);
+      if (mcq.question && mcq.question.trim().length > 10 && mcq.options.length === 4 && mcq.correct) {
         questions.push(mcq);
-      } else {
-        console.log(`parseMCQs: Skipped invalid MCQ - Q:"${mcq.question?.substring(0, 30)}..." Opts:${mcq.options.length} Correct:${mcq.correct}`);
       }
     }
     
-    console.log(`parseMCQs: Successfully parsed ${questions.length} valid MCQs`);
     return questions;
   };
 
@@ -990,19 +895,6 @@ Generate EXACTLY ${numQuestions} premium-quality ${difficultyLevel.toUpperCase()
       return;
     }
     
-    // Check if API keys exist
-    if (totalKeys === 0) {
-      setError('⚠️ Please add at least one Google Gemini API key before generating MCQs. Expand the API Key Manager above.');
-      return;
-    }
-    
-    // Check if any keys are available (not all rate limited)
-    const availableKeys = getAvailableKeyCount();
-    if (availableKeys === 0) {
-      setError('⚠️ All API keys are currently rate limited. Please wait 1-2 minutes for recovery or add more keys.');
-      return;
-    }
-    
     setProcessing(true);
     setError('');
     setStatus('Loading PDF...');
@@ -1016,41 +908,17 @@ Generate EXACTLY ${numQuestions} premium-quality ${difficultyLevel.toUpperCase()
         cMapPacked: true
       }).promise;
       
-      if (pdf.numPages === 0) {
-        setError('PDF has no pages. Please upload a valid PDF.');
-        setProcessing(false);
-        return;
-      }
-      
       setStatus(`Processing ${pdf.numPages} pages...`);
       const content = await processPDFOptimized(pdf);
-      
-      if (!content || content.trim().length < 100) {
-        const availableKeys = getAvailableKeyCount();
-        if (availableKeys === 0) {
-          setError('❌ Could not extract text from PDF. This appears to be a scanned/image PDF that requires OCR, but no API keys are available. Please wait for API keys to load or add your own keys.');
-        } else {
-          setError('❌ Could not extract text from PDF. The PDF may be scanned or contain only images. OCR was attempted but failed. Please try a text-based PDF.');
-        }
-        setProcessing(false);
-        return;
-      }
       
       setStatus('Generating MCQs...');
       const generatedMCQs = await generateMCQs(content, count);
       
-      if (!generatedMCQs || generatedMCQs.length === 0) {
-        setError('❌ Failed to generate MCQs. This could be due to: 1) API keys rate limited - wait 1-2 min 2) PDF content insufficient 3) Network issues. Please try again.');
-        setProcessing(false);
-        return;
-      }
-      
-      setStatus(`✅ Successfully generated ${generatedMCQs.length} MCQs!`);
+      setStatus('');
       // Navigate to quiz page with generated MCQs
       navigate('/quiz', { state: { mcqs: generatedMCQs } });
     } catch (err: any) {
-      console.error('MCQ generation error:', err);
-      setError(`Error: ${err?.message || 'Unknown error occurred. Please try again.'}`);
+      setError(`Error: ${err.message}`);
     } finally {
       setProcessing(false);
     }
@@ -1270,8 +1138,8 @@ Generate EXACTLY ${numQuestions} premium-quality ${difficultyLevel.toUpperCase()
         )}
 
         {/* Donation Button */}
-        <div className="mb-6">
-          <DonationButton variant="default" />
+        <div className="flex justify-center mb-6">
+          <DonationButton pauseAnimation={processing} />
         </div>
 
         <button 

@@ -65,22 +65,6 @@ async function logAudit(
   });
 }
 
-// Sanitize search input to prevent SQL pattern injection
-function sanitizeSearchInput(input: string): string {
-  // Escape SQL ILIKE special characters: %, _, \
-  // Also limit length to prevent abuse
-  return input
-    .replace(/\\/g, '\\\\')  // Escape backslashes first
-    .replace(/%/g, '\\%')    // Escape percent
-    .replace(/_/g, '\\_')    // Escape underscore
-    .substring(0, 100);      // Limit length
-}
-
-// Validate search input characters (alphanumeric, @, ., -, _, space)
-function isValidSearchInput(input: string): boolean {
-  return /^[a-zA-Z0-9@.\-_\s]*$/.test(input);
-}
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -99,23 +83,15 @@ serve(async (req) => {
     if (req.method === 'GET' && !userId) {
       const page = parseInt(url.searchParams.get('page') || '1');
       const limit = Math.min(parseInt(url.searchParams.get('limit') || '20'), 100);
-      const rawSearch = url.searchParams.get('search') || '';
+      const search = url.searchParams.get('search') || '';
       const blocked = url.searchParams.get('blocked');
       
       let query = supabase
         .from('users')
         .select('*', { count: 'exact' });
       
-      // Sanitize and validate search input before using in query
-      if (rawSearch) {
-        if (!isValidSearchInput(rawSearch)) {
-          return new Response(JSON.stringify({ error: 'Invalid search characters' }), {
-            status: 400,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          });
-        }
-        const sanitizedSearch = sanitizeSearchInput(rawSearch);
-        query = query.or(`email.ilike.%${sanitizedSearch}%,name.ilike.%${sanitizedSearch}%`);
+      if (search) {
+        query = query.or(`email.ilike.%${search}%,name.ilike.%${search}%`);
       }
       
       if (blocked !== null && blocked !== '') {
