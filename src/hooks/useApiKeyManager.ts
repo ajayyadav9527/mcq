@@ -132,21 +132,73 @@ export const useApiKeyManager = (): UseApiKeyManagerReturn => {
     } catch (e) {
       console.error('Failed to load API keys from storage:', e);
     }
-    // Return empty array - users must provide their own API keys
+    // Return empty array - backend keys will be fetched
     return [];
   });
   
   const [isValidating, setIsValidating] = useState(false);
   const [validationResults, setValidationResults] = useState<ValidationResult[]>([]);
+  const [backendKeysFetched, setBackendKeysFetched] = useState(false);
   
-  // Save to localStorage when keys change
+  // Fetch backend API keys on mount if no user keys exist
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(apiKeys));
-    } catch (e) {
-      console.error('Failed to save API keys to storage:', e);
+    const fetchBackendKeys = async () => {
+      // Only fetch if no user-added keys and haven't already fetched
+      if (apiKeys.length > 0 || backendKeysFetched) return;
+      
+      try {
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        if (!supabaseUrl) {
+          console.log('No Supabase URL configured');
+          return;
+        }
+        
+        const response = await fetch(`${supabaseUrl}/functions/v1/gemini-keys`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.keys && Array.isArray(data.keys) && data.keys.length > 0) {
+            console.log(`Loaded ${data.keys.length} backend Gemini API keys`);
+            const backendKeys: ApiKeyEntry[] = data.keys.map((key: string, index: number) => ({
+              key,
+              status: 'active' as const,
+              addedAt: Date.now(),
+              lastChecked: Date.now(),
+              requestCount: 0,
+              lastUsed: 0,
+              rateLimited: false,
+              rateLimitedAt: 0,
+              order: index
+            }));
+            setApiKeys(backendKeys);
+          }
+        } else {
+          console.log('Failed to fetch backend keys:', response.status);
+        }
+      } catch (err) {
+        console.error('Error fetching backend Gemini keys:', err);
+      }
+      
+      setBackendKeysFetched(true);
+    };
+    
+    fetchBackendKeys();
+  }, [apiKeys.length, backendKeysFetched]);
+  
+  // Save to localStorage when keys change (only user-added keys, not backend keys)
+  useEffect(() => {
+    // Don't save backend-fetched keys to localStorage
+    if (apiKeys.length > 0 && backendKeysFetched) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(apiKeys));
+      } catch (e) {
+        console.error('Failed to save API keys to storage:', e);
+      }
     }
-  }, [apiKeys]);
+  }, [apiKeys, backendKeysFetched]);
   
   // Add bulk keys with validation
   const addBulkKeys = useCallback(async (inputKeys: string[]): Promise<ValidationResult[]> => {
