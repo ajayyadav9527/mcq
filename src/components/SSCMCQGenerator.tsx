@@ -941,7 +941,7 @@ Generate EXACTLY ${numQuestions} premium-quality ${difficultyLevel.toUpperCase()
         </div>
 
         {/* Bulk API Key Manager */}
-        <div className="mb-4">
+        <div className="mb-6">
           <BulkApiKeyManager />
         </div>
 
@@ -1136,6 +1136,31 @@ Generate EXACTLY ${numQuestions} premium-quality ${difficultyLevel.toUpperCase()
             </div>
           </div>
         )}
+
+        <div className="bg-gradient-to-r from-cyan-50 to-blue-50 border-l-4 border-cyan-500 p-4 mb-4 rounded-lg">
+          <p className="font-bold text-cyan-800 mb-2">⚡ Speed Optimizations (20 API Keys):</p>
+          <ul className="text-sm text-cyan-700 space-y-1 ml-4">
+            <li>✓ <strong>20 Gemini API keys rotating</strong> for parallel processing</li>
+            <li>✓ <strong>Automatic deduplication</strong> ensures 100% unique questions</li>
+            <li>✓ 40-page batches with 20 concurrent operations</li>
+            <li>✓ <strong>Up to 500 MCQs</strong> per generation</li>
+            <li>✓ 150K token context (50% larger)</li>
+            <li>✓ Reduced image quality for faster OCR</li>
+            <li>✓ Zero-delay processing pipeline</li>
+          </ul>
+        </div>
+
+        <div className="bg-gradient-to-r from-purple-50 to-pink-50 border-l-4 border-purple-500 p-4 mb-6 rounded-lg">
+          <p className="font-bold text-purple-800 mb-2">🎓 Ultra-Detailed Explanations:</p>
+          <ul className="text-sm text-purple-700 space-y-1 ml-4">
+            <li>✓ <strong>7-point explanation format</strong> (5-8 sentences each)</li>
+            <li>✓ Why correct + why each wrong option is wrong</li>
+            <li>✓ Historical background & key facts/figures</li>
+            <li>✓ Memory tips & mnemonics included</li>
+            <li>✓ Related concepts & exam relevance</li>
+            <li>✓ Testbook-style comprehensive approach</li>
+          </ul>
+        </div>
 
         {/* Donation Button */}
         <div className="flex justify-center mb-6">
