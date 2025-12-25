@@ -68,14 +68,18 @@ const SSCMCQGenerator = () => {
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const [pdfLibLoaded, setPdfLibLoaded] = useState(false);
-  const [keyStatuses, setKeyStatuses] = useState<ApiKeyStatus[]>(getKeyStatuses());
+  const [keyStatuses, setKeyStatuses] = useState<ApiKeyStatus[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const processingRef = useRef({ startTime: 0, completed: 0 });
   
   const totalKeys = apiKeys.length;
   
-  // Update key statuses every 500ms during processing
+  // Initialize and update key statuses
   useEffect(() => {
+    // Initialize on mount
+    setKeyStatuses(getKeyStatuses());
+    
+    // Update every 500ms during processing
     if (!processing) return;
     
     const interval = setInterval(() => {
