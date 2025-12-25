@@ -12,9 +12,10 @@ const MIN_KEY_COOLDOWN_MS = 3000; // 3 seconds minimum between same key uses
 // Rate limit recovery time
 const RATE_LIMIT_RECOVERY_MS = 90000; // 90 seconds recovery
 
-// No default API keys - users must add their own fresh keys
-// Previous keys were flagged as "leaked" by Google and disabled
-const DEFAULT_API_KEYS: string[] = [];
+// Default API key provided by user
+const DEFAULT_API_KEYS: string[] = [
+  "AIzaSyAMYRDVO3pTTQ507Fldm0xCipvC4VamTXA"
+];
 
 // Create default API key entries (empty array now)
 const createDefaultKeyEntries = (): ApiKeyEntry[] => {
@@ -174,8 +175,8 @@ export const useApiKeyManager = (): UseApiKeyManagerReturn => {
     } catch (e) {
       console.error('Failed to load API keys from storage:', e);
     }
-    // Return empty array - users must add their own keys
-    return [];
+    // Return default keys if no stored keys
+    return createDefaultKeyEntries();
   });
   
   const [isValidating, setIsValidating] = useState(false);
