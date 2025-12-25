@@ -25,7 +25,7 @@ const UserManual: React.FC = () => {
               <li>
                 Go to{' '}
                 <a 
-                  href="https://aistudio.google.com/apikey" 
+                  href="https://aistudio.google.com/api-keys" 
                   target="_blank" 
                   rel="noopener noreferrer"
                   className="text-primary hover:underline inline-flex items-center gap-1"
