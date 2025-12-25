@@ -943,6 +943,33 @@ Generate EXACTLY ${numQuestions} premium-quality ${difficultyLevel.toUpperCase()
         {/* Bulk API Key Manager */}
         <div className="mb-6">
           <BulkApiKeyManager />
+
+          {/* API key help text (shown below the manager) */}
+          <div className="mt-4 rounded-xl border border-border bg-card p-4">
+            <p className="text-foreground font-bold text-lg mb-2">🚨 API Keys Required</p>
+            <p className="text-muted-foreground mb-3">
+              You need to add your own Google Gemini API keys to generate MCQs. The previous default keys were disabled by Google.
+            </p>
+            <div className="bg-muted/40 p-3 rounded-lg border border-border">
+              <p className="font-semibold text-foreground mb-2">How to get free API keys:</p>
+              <ol className="text-sm text-muted-foreground list-decimal list-inside space-y-1">
+                <li>
+                  Go to{' '}
+                  <a
+                    href="https://aistudio.google.com/apikey"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline font-medium"
+                  >
+                    Google AI Studio
+                  </a>
+                </li>
+                <li>Sign in with your Google account</li>
+                <li>Click "Create API Key"</li>
+                <li>Copy the key and paste it in the API Key Manager above</li>
+              </ol>
+            </div>
+          </div>
         </div>
 
         {/* User Manual */}
