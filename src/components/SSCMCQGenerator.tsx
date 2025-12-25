@@ -950,21 +950,6 @@ Generate EXACTLY ${numQuestions} premium-quality ${difficultyLevel.toUpperCase()
           <UserManual />
         </div>
 
-        {totalKeys === 0 && (
-          <div className="mb-6 p-4 bg-red-50 border-2 border-red-400 rounded-xl">
-            <p className="text-red-800 font-bold text-lg mb-2">🚨 API Keys Required</p>
-            <p className="text-red-700 mb-3">You need to add your own Google Gemini API keys to generate MCQs. The previous default keys were disabled by Google.</p>
-            <div className="bg-white p-3 rounded-lg border border-red-200">
-              <p className="font-semibold text-gray-800 mb-2">How to get free API keys:</p>
-              <ol className="text-sm text-gray-700 list-decimal list-inside space-y-1">
-                <li>Go to <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">Google AI Studio</a></li>
-                <li>Sign in with your Google account</li>
-                <li>Click "Create API Key"</li>
-                <li>Copy the key and paste it in the API Key Manager above</li>
-              </ol>
-            </div>
-          </div>
-        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <div>
