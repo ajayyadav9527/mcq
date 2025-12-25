@@ -131,40 +131,13 @@ const validateKeyWithApi = async (key: string): Promise<{ valid: boolean; error?
 let lastUsedKeyIndex = -1;
 
 export const useApiKeyManager = (): UseApiKeyManagerReturn => {
-  // List of known compromised/leaked API keys to filter out
-  const COMPROMISED_KEYS = [
-    "AIzaSyDaMKqIv0evt32sVY6N5w8HFTic4NzRhUc",
-    "AIzaSyAQ3VC1tksiEBo-xSlNE6P6W3MxRo3GvNQ",
-    "AIzaSyDpQ2lkx1ZmmFFE8bkc59fJPPRBmDEZU90",
-    "AIzaSyC0HJ-pFCWHBIdHRL6ZcKrFwFwIsz2NOFg",
-    "AIzaSyCmMK71BMnDfIs1JUlQhWWQAVICjNTlhIU",
-    "AIzaSyA5ZOeU_NzZ76Ailw8VeiMOcDF24iPOOmA",
-    "AIzaSyCpfyj2aaiw0Qum6VhOSSTpqDXu6W6qrT0",
-    "AIzaSyBHyFyd4sL6FIVcGwlEYPnXRfNDz6B7YmA",
-    "AIzaSyDjugbcD8ILBrvryhA212dK71sHkl1L89Q",
-    "AIzaSyBX6-KmAvjviv4eP3PnNZkppiFp7DjUuqY",
-    "AIzaSyCoIsb3c7cnEH49p7VleJswDX8MZsy5upo",
-    "AIzaSyAKQviGfQb_fSTGgqFqxZdM4g1hdENLdBI",
-    "AIzaSyBIgAFjjnWKLbNsshS4CkE_-AVahWrdObo",
-    "AIzaSyDw7PmxuyCjxpgjBgu-1DQw2ymmjR52hSU",
-    "AIzaSyCj80wHEVGUCkE4068zUuVU7YvajeLXYQE",
-    "AIzaSyDL5jOYx70OdA7cXbz_ueJ1A9zzwgspEYg",
-    "AIzaSyA9uN5rkiCKOIcHYAH0C5k0N8WbKVnB-jQ",
-    "AIzaSyDHPZso9b7hyxR93VBQzODT6GfDolsjaXA",
-    "AIzaSyA9qqLOI3NIzj4JHiVnKoIz8o4Ayyd4bTg",
-    "AIzaSyCUc_-CJRlRyZBZFzHKzdEBLtZx8RBqRsc"
-  ];
-
   const [apiKeys, setApiKeys] = useState<ApiKeyEntry[]>(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored) as ApiKeyEntry[];
-        // Filter out any compromised/leaked keys
-        const validKeys = parsed.filter(k => !COMPROMISED_KEYS.includes(k.key));
-        if (validKeys.length > 0) {
-          // Ensure all stored keys have the order property
-          return validKeys.map((k, i) => ({ 
+        if (parsed.length > 0) {
+          return parsed.map((k, i) => ({ 
             ...k, 
             rateLimited: false, 
             rateLimitedAt: 0,
@@ -175,7 +148,7 @@ export const useApiKeyManager = (): UseApiKeyManagerReturn => {
     } catch (e) {
       console.error('Failed to load API keys from storage:', e);
     }
-    // Return default keys if no stored keys
+    // Return default key provided by user
     return createDefaultKeyEntries();
   });
   
