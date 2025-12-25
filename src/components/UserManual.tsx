@@ -42,6 +42,15 @@ const UserManual: React.FC = () => {
                   MakerSuite (Alternative) <ExternalLink className="w-3 h-3" />
                 </a>
               </li>
+              <li>
+                If the page says 2aistudio.google.com is blocked2 (ERR_BLOCKED_BY_RESPONSE), fix it like this:
+                <ul className="list-disc ml-5 mt-1 space-y-1">
+                  <li>Open in Incognito/Private window (disables many extensions)</li>
+                  <li>Temporarily disable AdBlock/Brave Shields/Antivirus Web Protection for this site</li>
+                  <li>Try a different network (mobile data / hotspot) or a trusted VPN</li>
+                  <li>If youre on office/school Wi‑Fi, ask the admin to allowlist aistudio.google.com</li>
+                </ul>
+              </li>
               <li>Sign in with your Google account</li>
               <li>Click <strong>"Create API Key"</strong></li>
               <li>Select any project or create a new one</li>
