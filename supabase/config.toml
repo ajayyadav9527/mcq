@@ -17,3 +17,6 @@ verify_jwt = true
 
 [functions.donation-settings]
 verify_jwt = false
+
+[functions.gemini-keys]
+verify_jwt = false
