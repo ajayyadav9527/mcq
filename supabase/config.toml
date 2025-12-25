@@ -17,3 +17,6 @@ verify_jwt = true
 
 [functions.donation-settings]
 verify_jwt = false
+
+[functions.generate-mcqs]
+verify_jwt = false
