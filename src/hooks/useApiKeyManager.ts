@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 
 // Maximum number of API keys allowed
 const MAX_API_KEYS = 50;
@@ -138,13 +138,26 @@ export const useApiKeyManager = (): UseApiKeyManagerReturn => {
   
   const [isValidating, setIsValidating] = useState(false);
   const [validationResults, setValidationResults] = useState<ValidationResult[]>([]);
-  const [backendKeysFetched, setBackendKeysFetched] = useState(false);
+  const backendKeysFetchedRef = useRef(false);
   
   // Fetch backend API keys on mount if no user keys exist
   useEffect(() => {
     const fetchBackendKeys = async () => {
-      // Only fetch if no user-added keys and haven't already fetched
-      if (apiKeys.length > 0 || backendKeysFetched) return;
+      // Only fetch once and only if no stored keys
+      if (backendKeysFetchedRef.current) return;
+      backendKeysFetchedRef.current = true;
+      
+      // Check if we already have keys from localStorage
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            console.log('Using stored API keys');
+            return;
+          }
+        } catch (e) {}
+      }
       
       try {
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -181,24 +194,21 @@ export const useApiKeyManager = (): UseApiKeyManagerReturn => {
       } catch (err) {
         console.error('Error fetching backend Gemini keys:', err);
       }
-      
-      setBackendKeysFetched(true);
     };
     
     fetchBackendKeys();
-  }, [apiKeys.length, backendKeysFetched]);
+  }, []);
   
-  // Save to localStorage when keys change (only user-added keys, not backend keys)
+  // Save to localStorage when keys change
   useEffect(() => {
-    // Don't save backend-fetched keys to localStorage
-    if (apiKeys.length > 0 && backendKeysFetched) {
+    if (apiKeys.length > 0) {
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(apiKeys));
       } catch (e) {
         console.error('Failed to save API keys to storage:', e);
       }
     }
-  }, [apiKeys, backendKeysFetched]);
+  }, [apiKeys]);
   
   // Add bulk keys with validation
   const addBulkKeys = useCallback(async (inputKeys: string[]): Promise<ValidationResult[]> => {
