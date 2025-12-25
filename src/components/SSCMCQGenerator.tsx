@@ -327,48 +327,71 @@ const SSCMCQGenerator = () => {
     const pagesWithText = textPages.filter(p => p.text !== null).length;
     const needsOCR = pagesWithText < totalPages * 0.3;
     
+    console.log(`PDF analysis: ${pagesWithText}/${totalPages} pages have text. OCR needed: ${needsOCR}`);
+    
     if (needsOCR) {
-      setStatus(`🔍 Scanned PDF detected. Running OCR on ${totalPages} pages...`);
-      
-      // Process pages sequentially with small delays to avoid rate limiting
-      const CONCURRENT_OCR = 3; // Lower concurrency for OCR
-      
-      for (let i = 0; i < totalPages; i += CONCURRENT_OCR) {
-        const batch: Promise<string | null>[] = [];
-        
-        for (let j = 0; j < CONCURRENT_OCR && i + j < totalPages; j++) {
-          const pageNum = i + j + 1;
-          const existingText = textPages[i + j]?.text;
-          
-          if (existingText) {
-            batch.push(Promise.resolve(existingText));
-          } else {
-            batch.push(
-              new Promise(async (resolve) => {
-                await new Promise(r => setTimeout(r, j * 500)); // Stagger requests
-                const text = await processPageWithOCR(pdf, pageNum);
-                resolve(text);
-              })
-            );
-          }
-        }
-        
-        const results = await Promise.all(batch);
-        
-        for (let j = 0; j < results.length; j++) {
-          const pageNum = i + j + 1;
-          const text = results[j];
-          if (text) {
-            allContent.push(`--- Page ${pageNum} ---\n${text}\n`);
+      // Check if we have API keys for OCR
+      const availableKeys = getAvailableKeyCount();
+      if (availableKeys === 0) {
+        setStatus('⚠️ No API keys available for OCR. Using available text only...');
+        console.log('No API keys available for OCR, falling back to text-only extraction');
+        // Fall back to using whatever text we got
+        for (const page of textPages) {
+          if (page.text) {
+            allContent.push(`--- Page ${page.pageNum} ---\n${page.text}\n`);
           }
           processingRef.current.completed++;
           updateProgress(processingRef.current.completed, totalPages * 2);
         }
+      } else {
+        setStatus(`🔍 Scanned PDF detected. Running OCR on ${totalPages} pages with ${availableKeys} API keys...`);
         
-        // Delay between batches
-        if (i + CONCURRENT_OCR < totalPages) {
-          await new Promise(r => setTimeout(r, 800));
+        // Process pages sequentially with small delays to avoid rate limiting
+        const CONCURRENT_OCR = Math.min(3, availableKeys); // Lower concurrency for OCR
+        let ocrSuccessCount = 0;
+        
+        for (let i = 0; i < totalPages; i += CONCURRENT_OCR) {
+          const batch: Promise<string | null>[] = [];
+          
+          for (let j = 0; j < CONCURRENT_OCR && i + j < totalPages; j++) {
+            const pageNum = i + j + 1;
+            const existingText = textPages[i + j]?.text;
+            
+            if (existingText) {
+              batch.push(Promise.resolve(existingText));
+            } else {
+              batch.push(
+                new Promise(async (resolve) => {
+                  await new Promise(r => setTimeout(r, j * 500)); // Stagger requests
+                  const text = await processPageWithOCR(pdf, pageNum);
+                  resolve(text);
+                })
+              );
+            }
+          }
+          
+          const results = await Promise.all(batch);
+          
+          for (let j = 0; j < results.length; j++) {
+            const pageNum = i + j + 1;
+            const text = results[j];
+            if (text) {
+              allContent.push(`--- Page ${pageNum} ---\n${text}\n`);
+              ocrSuccessCount++;
+            }
+            processingRef.current.completed++;
+            updateProgress(processingRef.current.completed, totalPages * 2);
+          }
+          
+          setStatus(`🔍 OCR Progress: ${ocrSuccessCount} pages extracted (${Math.round((i + CONCURRENT_OCR) / totalPages * 100)}%)...`);
+          
+          // Delay between batches
+          if (i + CONCURRENT_OCR < totalPages) {
+            await new Promise(r => setTimeout(r, 800));
+          }
         }
+        
+        console.log(`OCR completed: ${ocrSuccessCount}/${totalPages} pages successfully extracted`);
       }
     } else {
       // Use extracted text
@@ -1003,7 +1026,12 @@ Generate EXACTLY ${numQuestions} premium-quality ${difficultyLevel.toUpperCase()
       const content = await processPDFOptimized(pdf);
       
       if (!content || content.trim().length < 100) {
-        setError('Could not extract text from PDF. The PDF may be scanned or image-based. Please try a different PDF.');
+        const availableKeys = getAvailableKeyCount();
+        if (availableKeys === 0) {
+          setError('❌ Could not extract text from PDF. This appears to be a scanned/image PDF that requires OCR, but no API keys are available. Please wait for API keys to load or add your own keys.');
+        } else {
+          setError('❌ Could not extract text from PDF. The PDF may be scanned or contain only images. OCR was attempted but failed. Please try a text-based PDF.');
+        }
         setProcessing(false);
         return;
       }
