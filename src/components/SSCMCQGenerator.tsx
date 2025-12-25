@@ -1138,8 +1138,8 @@ Generate EXACTLY ${numQuestions} premium-quality ${difficultyLevel.toUpperCase()
         )}
 
         {/* Donation Button */}
-        <div className="flex justify-center mb-6">
-          <DonationButton pauseAnimation={processing} />
+        <div className="mb-6">
+          <DonationButton variant="default" />
         </div>
 
         <button 

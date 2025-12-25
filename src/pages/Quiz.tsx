@@ -411,6 +411,11 @@ const Quiz = () => {
               </div>
             )}
 
+            {/* Mobile Donation - visible only on mobile/tablet */}
+            <div className="lg:hidden mb-6">
+              <DonationButton variant="default" />
+            </div>
+
             {/* Navigation */}
             <div className="flex gap-4">
               <button
@@ -464,8 +469,8 @@ const Quiz = () => {
             <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide mb-4">Question Palette</h3>
             
             {/* Donation Button */}
-            <div className="flex justify-center mb-4">
-              <DonationButton pauseAnimation={!showResult} />
+            <div className="mb-4">
+              <DonationButton variant="compact" />
             </div>
 
             <div className="border-t border-border pt-4">
