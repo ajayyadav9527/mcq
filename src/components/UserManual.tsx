@@ -32,6 +32,15 @@ const UserManual: React.FC = () => {
                 >
                   Google AI Studio <ExternalLink className="w-3 h-3" />
                 </a>
+                {' '}or{' '}
+                <a 
+                  href="https://makersuite.google.com/app/apikey" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline inline-flex items-center gap-1"
+                >
+                  MakerSuite (Alternative) <ExternalLink className="w-3 h-3" />
+                </a>
               </li>
               <li>Sign in with your Google account</li>
               <li>Click <strong>"Create API Key"</strong></li>
