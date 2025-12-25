@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import BulkApiKeyManager from './BulkApiKeyManager';
+import UserManual from './UserManual';
 import DonationButton from './DonationButton';
 import { useApiKeyManager, ApiKeyStatus } from '@/hooks/useApiKeyManager';
 
@@ -940,8 +941,13 @@ Generate EXACTLY ${numQuestions} premium-quality ${difficultyLevel.toUpperCase()
         </div>
 
         {/* Bulk API Key Manager */}
-        <div className="mb-6">
+        <div className="mb-4">
           <BulkApiKeyManager />
+        </div>
+
+        {/* User Manual */}
+        <div className="mb-6">
+          <UserManual />
         </div>
 
         {totalKeys === 0 && (
