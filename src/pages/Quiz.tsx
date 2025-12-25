@@ -283,26 +283,40 @@ const Quiz = () => {
     <div className="min-h-screen bg-muted flex flex-col">
       {/* Header */}
       <div className="bg-primary text-primary-foreground py-3 px-4 shadow-md">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <button
             onClick={() => navigate('/')}
-            className="flex items-center gap-1 text-sm hover:text-primary-foreground/80 transition-colors"
+            className="flex items-center gap-1 text-sm hover:text-primary-foreground/80 transition-colors shrink-0"
           >
             <ChevronLeft className="w-4 h-4" />
-            Exit
+            <span className="hidden sm:inline">Exit</span>
           </button>
-          <h1 className="text-lg font-bold">Practice Quiz</h1>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-1 text-sm bg-primary-foreground/10 px-3 py-1 rounded-full">
+          
+          <h1 className="text-base sm:text-lg font-bold truncate">Practice Quiz</h1>
+          
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            {/* Donate Button - Compact mode in header */}
+            <DonationButton compact pauseAnimation={showResult} />
+            
+            <div className="hidden sm:flex items-center gap-1 text-sm bg-primary-foreground/10 px-3 py-1 rounded-full">
               <Clock className="w-4 h-4" />
               <span className="font-mono">{formatTime(elapsedTime)}</span>
             </div>
             <button
               onClick={() => setShowPalette(!showPalette)}
-              className="text-sm bg-primary-foreground/10 px-3 py-1 rounded-full hover:bg-primary-foreground/20 transition-colors"
+              className="text-xs sm:text-sm bg-primary-foreground/10 px-2 sm:px-3 py-1 rounded-full hover:bg-primary-foreground/20 transition-colors"
             >
-              {showPalette ? 'Hide' : 'Show'} Panel
+              <span className="sm:hidden">{showPalette ? '−' : '+'}</span>
+              <span className="hidden sm:inline">{showPalette ? 'Hide' : 'Show'} Panel</span>
             </button>
+          </div>
+        </div>
+        
+        {/* Mobile timer row */}
+        <div className="sm:hidden flex justify-center mt-2">
+          <div className="flex items-center gap-1 text-xs bg-primary-foreground/10 px-3 py-1 rounded-full">
+            <Clock className="w-3.5 h-3.5" />
+            <span className="font-mono">{formatTime(elapsedTime)}</span>
           </div>
         </div>
       </div>
